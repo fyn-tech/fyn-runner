@@ -69,7 +69,8 @@ sequenceDiagram
     participant local cache
     participant fyn-api
 
-    %% Initial Connection
+    fyn-runner->>+local cache: establish location
+    fyn-runner<<->>local cache: load settings
     fyn-runner->>fyn-api: Request Validate with runner ID & Auth
     fyn-api-->>fyn-runner: Respond validate credentials
     fyn-runner->>fyn-api: Report startup state
@@ -98,6 +99,7 @@ sequenceDiagram
     fyn-runner->>fyn-api: Report ready for jobs
     fyn-api-->>fyn-runner: Acknowledge ready for jobs
     fyn-runner->>fyn-runner: Enter Active State
+    deactivate local cache
 ```
 ## Active State Connection Events
 - Once started we enter the main active state.
