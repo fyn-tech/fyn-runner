@@ -134,6 +134,8 @@ sequenceDiagram
 ```
 ## Job Events
 
+- note runtime resource availability must be assessed at boot up for the job (application), failure to meet memory needs (as an example) should result in a crash, which then follows a failed job route.
+
 ```mermaid
 sequenceDiagram
     box fyn-runner process
@@ -143,22 +145,30 @@ sequenceDiagram
     participant local cache
     participant fyn-api
 
-    fyn-api->>main thread: Send job request
-    main thread->>main thread: save job data
-    main thread->>job thread: Spawn thread
-    main thread->>job thread: Assign job and job data
-    job thread->>fyn-api: Report job started
-    loop Until Job Complete
-        job thread->>job thread: Execute job steps
-        job thread->>local cache: Update progress
-        job thread->>fyn-api: Report progress + job data (setting based interval)
-    end    
-    job thread->>fyn-api: Report job completion, success/fail
-    job thread->>local cache: archive job results
-    job thread->>job thread: terminate self
+    fyn-api->>main thread: Post job request
+    main thread->>main thread: determine if able to accept job payload
+
+    alt Sufficient resources/capability to accept job/job payload
+        main thread-->>fyn-api: Respond job accepted, waiting for job payload.
+        fyn-api->>main thread: Post job payload
+        main thread->>local cache: Save job payload
+        main thread->>job thread: Spawn thread
+        activate job thread
+        main thread->>job thread: Assign job
+        local cache<<-->>job thread: Get job payload
+        job thread->>fyn-api: Report job started
+        loop Until Job Complete
+            job thread->>job thread: Execute job steps
+            job thread->>local cache: Update progress
+            job thread->>fyn-api: Report progress + job data (setting based interval)
+        end    
+        job thread->>fyn-api: Report job completion, success/fail
+        job thread->>local cache: archive job results
+        deactivate job thread
+    else Cannot accept Job
+        main thread-->>fyn-api: Respond job refused.
+    end
 ```
-
-
 
 ## Exit and Shutdown
 
@@ -174,3 +184,8 @@ sequenceDiagram
     fyn-api-->>fyn-runner: Response shutdown acknowledge
     fyn-runner->>fyn-runner: exit(0)
 ```
+
+## Missing Events
+
+1. Request for runner data/logs
+2. Request for simulation data/logs.
