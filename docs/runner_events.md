@@ -9,7 +9,7 @@ sequenceDiagram
     user->>fyn-api: Request new runner
     fyn-api-->>user: Responses runner payload
     user->>fyn-runner: Start installation process
-    fyn-runner->>fyn-runner: Create Local Cache/Directory Folder
+    fyn-runner->>fyn-runner: Create local cache/Directory Folder
     fyn-runner->>fyn-runner: Configure/Install Runner
     alt Windows Platform
         fyn-runner->>os-service: Register Windows Service
@@ -109,7 +109,6 @@ sequenceDiagram
     box fyn-runner process
         participant main thread
     end
-    participant local cache
     participant fyn-api
 
 
@@ -133,4 +132,45 @@ sequenceDiagram
         end
     end
 ```
+## Job Events
+
+```mermaid
+sequenceDiagram
+    box fyn-runner process
+        participant main thread
+        participant job thread
+    end
+    participant local cache
+    participant fyn-api
+
+    fyn-api->>main thread: Send job request
+    main thread->>main thread: save job data
+    main thread->>job thread: Spawn thread
+    main thread->>job thread: Assign job and job data
+    job thread->>fyn-api: Report job started
+    loop Until Job Complete
+        job thread->>job thread: Execute job steps
+        job thread->>local cache: Update progress
+        job thread->>fyn-api: Report progress + job data (setting based interval)
+    end    
+    job thread->>fyn-api: Report job completion, success/fail
+    job thread->>local cache: archive job results
+    job thread->>job thread: terminate self
+```
+
+
+
 ## Exit and Shutdown
+
+- We don't want to 'terminate jobs' when we exit. If the user shuts down the PC it will be terminated in due course.
+- Basically just want to tell the server we have signed off.
+
+```mermaid
+sequenceDiagram
+    participant fyn-runner
+    participant fyn-api
+
+    fyn-runner->>fyn-api: Post shutdown state
+    fyn-api-->>fyn-runner: Response shutdown acknowledge
+    fyn-runner->>fyn-runner: exit(0)
+```
