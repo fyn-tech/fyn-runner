@@ -6,6 +6,7 @@ import json
 from datetime import datetime
 import psutil
 
+@dataclass
 class GPUInfo:
     id: int
     name: str
