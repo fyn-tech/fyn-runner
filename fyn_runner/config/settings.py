@@ -13,7 +13,6 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-
 import yaml
 from pathlib import Path
 from typing import Dict
@@ -49,7 +48,7 @@ class Settings:
   local_cache: LocalCache = field(default_factory=LocalCache)
   api_settings: APISettings = field(default_factory=APISettings)
 
-def load_settings(config_path: str | Path) -> Settings:
+def load(config_path: str | Path) -> Settings:
     """Load settings from a YAML file."""
 
     path = Path(config_path)
@@ -76,7 +75,7 @@ def load_settings(config_path: str | Path) -> Settings:
     return Settings(**yaml_data)
 
 
-def save_settings(settings: Settings, config_path: str | Path) -> None:
+def save(settings: Settings, config_path: str | Path) -> None:
     """Save settings to a YAML file."""
     path = Path(config_path)
     
