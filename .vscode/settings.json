@@ -9,6 +9,11 @@
   "editor.rulers": [
     100
   ],
-  "flake8.args": ["--max-line-length=100"]
+  "flake8.args": [
+    "--max-line-length=100"
+  ],
+  "[markdown]": {
+    "editor.defaultFormatter": "yzhang.markdown-all-in-one"
+  }
   
 }
