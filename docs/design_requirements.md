@@ -66,3 +66,140 @@ Briefly the requirements will be fulfilled by the following components.
 | 9. Must organise simulation files.                                                           | [Simulation Monitor](#simulation-monitor-observer), [Server Proxy](#server-proxy--facade---proxy), [File manager](#file-manager)             |
 
 
+## UML Structure
+
+This section 'transposes' the above into a high level design concept with a uml diagram. Program is in python, so `public`/`private` aren't indicated. Utility methods and attributes are indicted with a `_` prefix. ``<<utility>>`` indicates static or non-object (collection of free functions).
+
+```mermaid
+---
+title: High Level Runner Class Layout
+config:
+  class:
+    hideEmptyMembersBox: true
+---
+classDiagram
+
+  %% Relationships
+  JobManager *--SimulationMonitor
+  JobManager *--ServerProxy
+  JobManager *-- FileManager
+
+
+  SimulationMonitor *-- FileManager
+  SimulationMonitor *-- Status
+  SimulationMonitor o-- ServerProxy
+
+  ServerProxy *-- APIEndPoint
+  ServerProxy *-- MessageQueue
+  MessageQueue *-- Message
+
+
+  %% Classes
+  class JobManager {
+    %% Attributes:
+    List~SimulationMonitor~ simulations
+    ServerProxy backend_communicator
+
+    %% Methods:
+    %% public interface/facade:
+    start_up()
+    shut_down()
+   
+    %% Startup procedures
+    _load_configuration()
+    _raise_server_connection()
+    _check_system_hardware()
+
+    %% Startup procedures
+    _end_server_connection()
+    _save_configuration()
+  }
+
+  namespace Simulation {
+
+    class SimulationMonitor {
+      %% Attributes:
+      string name
+      Path case_path
+      Status status
+      Path config_file_path
+      thread simulation_monitor
+
+      int _pid
+      int _exit_code
+
+      %% Methods:
+      launch(config_file_path) -> bool
+      terminate() -> bool
+
+      %% launching
+      _create_folder_structure() -> bool
+      _copy_input_files() -> bool
+      _start_execution() -> bool
+      _start_monitor_thread() -> thread
+    }
+
+    class Status {
+      <<enum>>
+    } 
+  }
+
+  class FileManager {
+    %% file_database stores path to folder database
+    Path simulation_file_database  
+    Path runner_folder
+  }
+  
+  class HardwareManager {
+    <<utility>>   
+    collect_system_specs()
+    detect_hardware_changes()
+  }
+
+  namespace Server {
+    class ServerProxy {
+      %% Attributes:
+      APIEndPoint api
+      MessageQueue message_queue
+      Dict~str, observer_call_back[]~ observer_list
+      thread _outgoing_message_handler
+      thread _incoming_message_handler
+
+      %% Method:
+      push_message(Message) -> bool
+      register_observer(str, observer_call_back(Message)) -> bool
+      unregister_observer(str) -> bool
+      notify_observers(Message) -> bool
+
+      %% Backend communication
+      _raise_connection()
+      _fetch_api() -> APIEndPoint
+      _send_message(Message) -> bool
+      _listen_api()
+    } 
+
+    class APIEndPoint {
+      <<enum>>
+    } 
+
+    class MessageQueue {
+      Message[] messages
+
+      is_empty() ->bool
+      push_message(Message)
+      get_next_message() -> Message      
+    } 
+
+    class Message {
+      data data
+      dataType type
+      int priority 
+    } 
+  }
+
+  class SystemIntegration {
+    
+  }
+
+ 
+```
