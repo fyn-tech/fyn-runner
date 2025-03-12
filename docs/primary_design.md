@@ -93,6 +93,8 @@ classDiagram
   ServerProxy *-- MessageQueue
   MessageQueue *-- Message
 
+  FileManager *-- RunnerConfig
+
 
   %% Classes
   class JobManager {
@@ -157,7 +159,8 @@ classDiagram
     %% file_database stores path to folder database
     Path simulation_file_database  
     Path runner_folder
-  }
+    RunnerConfig: config
+  } 
   
   class HardwareManager {
     <<utility>>   
@@ -209,6 +212,16 @@ classDiagram
   class SystemIntegration {
     
   }
-
- 
 ```
+
+## General Error Handling and Logging Approach:
+
+In general the runner needs to be 'fault' tolerant and should try to 'keep' running even when errors do occur. Thus general crashes when errors are encountered are to be minimised. Logging will be added to the program, and configurable and reportable to the server to help identify bugs and problems. Generally for levels of messaging the following hierarchical structure is followed:
+
+- Debugging: Additional information for diagnosing problems.
+- Info: General information and progress updates.
+- Warning: Some assumptions are being made to proceed, which may lead to further issues.
+- Error: An serious problem has occurred by the program will attempt to continue.
+- Critical: No way to continue, exit program.
+
+In general simulations should not be terminated if the runner goes down. At some point in the future we will have a 're-attach' to running simulation. That say a runner going down should not propagate to the simulation. 
