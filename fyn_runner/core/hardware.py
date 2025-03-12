@@ -50,6 +50,10 @@ class HardwareInfo:
     timestamp: str
 
 
+class HardwareData():
+    HardwareInfo hw_inf
+
+
 def detect_gpus() -> List[GPUInfo]:
     """Detect NVIDIA GPUs using nvidia-smi"""
     try:
