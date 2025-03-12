@@ -68,7 +68,7 @@ Briefly the requirements will be fulfilled by the following components.
 
 ## UML Structure
 
-This section 'transposes' the above into a high level design concept with a uml diagram. Program is in python, so `public`/`private` aren't indicated. Utility methods and attributes are indicted with a `_` prefix. ``<<utility>>`` indicates static or non-object (collection of free functions).
+This section 'transposes' the above into a high level design concept with a uml class diagram. The runner will be in python, so `public`/`private` aren't indicated. Utility methods and attributes are indicted with a `_` prefix. ``<<utility>>`` indicates static or non-object (collection of free functions).
 
 ```mermaid
 ---
@@ -113,6 +113,11 @@ classDiagram
     %% Startup procedures
     _end_server_connection()
     _save_configuration()
+
+    %% API communication (exc. sim file sync.)
+    _respond_to_job_request()
+    _update_hardware_data()
+    _heart_beat()
   }
 
   namespace Simulation {
@@ -137,6 +142,10 @@ classDiagram
       _copy_input_files() -> bool
       _start_execution() -> bool
       _start_monitor_thread() -> thread
+
+      %% API
+      _report_job_progress()
+      _report_job_status_change()
     }
 
     class Status {
