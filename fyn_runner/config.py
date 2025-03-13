@@ -1,4 +1,4 @@
-# Copyright (C) 2025 Bevan W.S. Jones
+# Copyright (C) 2025 Fyn-Runner Authors
 #
 # This program is free software: you can redistribute it and/or modify it under the terms of the GNU
 # General Public License as published by the Free Software Foundation, either version 3 of the
@@ -10,6 +10,7 @@
 #
 # You should have received a copy of the GNU General Public License along with this program. If not,
 #  see <https://www.gnu.org/licenses/>.
+
 
 import yaml
 from pathlib import Path
