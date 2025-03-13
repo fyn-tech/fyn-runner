@@ -75,7 +75,7 @@ def load(config_path: str | Path) -> Settings:
             )
         yaml_data["local_cache"] = LocalCache(**yaml_data["local_cache"])
     if "api_settings" in yaml_data:
-        yaml_data["api_settings"] = APISettings(**yaml_data["api_settings"])
+        yaml_data["api_settings"] = APISettings(**yaml_data["api_set  tings"])
 
     return Settings(**yaml_data)
 
