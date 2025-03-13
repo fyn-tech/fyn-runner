@@ -1,3 +1,19 @@
+[project]
+name = "fyn-runner"
+version = "0.1.0"
+dependencies = [
+    "psutil",
+    "nvidia-ml-py",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pylint",
+    "autopep8",
+    "flake8",
+    "pre-commit",
+]
+
 [tool.autopep8]
 max_line_length = 100
 aggressive = 2
