@@ -4,3 +4,9 @@ aggressive = 2
 
 [tool.flake8]
 max-line-length = 100
+
+[tool.pylint.messages_control]
+disable = [
+    "missing-module-docstring",
+    "broad-exception-caught"
+]

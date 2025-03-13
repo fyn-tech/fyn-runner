@@ -12,9 +12,9 @@
 #  see <https://www.gnu.org/licenses/>.
 
 
-from fyn_runner.config import settings as settings
+from fyn_runner import config
 from . import installed_setting as hard_settings
 
-sett = settings.load(hard_settings.CONFIG_FILE)
+sett = config.load(hard_settings.CONFIG_FILE)
 
-settings.save(sett, hard_settings.CONFIG_FILE)
+config.save(sett, hard_settings.CONFIG_FILE)

@@ -18,10 +18,14 @@ import logging
 import json
 from datetime import datetime
 import psutil
+import pynvml
 
 
 @dataclass
 class GPUInfo:
+    """
+    GPUInfo dataclass for storing hardware data related to GPU specs.
+    """
     id: int
     name: str
     vendor: str
@@ -33,6 +37,9 @@ class GPUInfo:
 
 @dataclass
 class SystemInfo:
+    """
+    SystemInfo dataclass for collecting 'softer' details.
+    """
     hostname: str
     os: str
     platform: str
@@ -42,6 +49,9 @@ class SystemInfo:
 
 @dataclass
 class HardwareInfo:
+    """
+    HardwareInfo dataclass for system hardware specs.
+    """
     system_info: SystemInfo
     gpus: List[GPUInfo]
     cpu_info: Dict
@@ -53,14 +63,13 @@ class HardwareInfo:
 def detect_gpus() -> List[GPUInfo]:
     """Detect NVIDIA GPUs using nvidia-smi"""
     try:
-        import pynvml
-
         pynvml.nvmlInit()
         devices = []
         for i in range(pynvml.nvmlDeviceGetCount()):
             handle = pynvml.nvmlDeviceGetHandleByIndex(i)
             info = pynvml.nvmlDeviceGetMemoryInfo(handle)
-            compute_capability = pynvml.nvmlDeviceGetCudaComputeCapability(handle)
+            compute_capability = pynvml.nvmlDeviceGetCudaComputeCapability(
+                handle)
             devices.append(
                 GPUInfo(
                     id=i,
@@ -69,6 +78,7 @@ def detect_gpus() -> List[GPUInfo]:
                         if isinstance(pynvml.nvmlDeviceGetName(handle), bytes)
                         else pynvml.nvmlDeviceGetName(handle)
                     ),
+                    vendor="NVidia",
                     memory_total=info.total,
                     compute_capability=compute_capability,
                     driver_version=pynvml.nvmlSystemGetDriverVersion().decode("utf-8"),
@@ -79,7 +89,7 @@ def detect_gpus() -> List[GPUInfo]:
         logging.warning("pynvml not installed - GPU detection disabled")
         return []
     except Exception as e:
-        logging.error(f"GPU detection failed: {str(e)}")
+        logging.error("GPU detection failed: %s", str(e))
         return []
 
 
@@ -97,7 +107,7 @@ def detect_cpu() -> Dict:
             "model": platform.processor(),
         }
     except Exception as e:
-        logging.error(f"CPU detection failed: {str(e)}")
+        logging.error("CPU detection failed: %s", str(e))
         return {}
 
 
@@ -112,8 +122,9 @@ def detect_memory() -> Dict:
             "used": mem.used,
             "free": mem.free,
         }
+
     except Exception as e:
-        logging.error(f"Memory detection failed: {str(e)}")
+        logging.error("Memory detection failed: %s", str(e))
         return {}
 
 
@@ -127,7 +138,7 @@ def detect_network() -> Dict:
             if not nic.startswith("lo")
         }
     except Exception as e:
-        logging.error(f"Network detection failed: {str(e)}")
+        logging.error("Network detection failed: %s", str(e))
         return {}
 
 
@@ -156,7 +167,7 @@ def collect_hardware_info() -> HardwareInfo:
 
 def save_hardware_info(hardware_info: HardwareInfo, filepath: str) -> None:
     """Save hardware information to a JSON file"""
-    with open(filepath, "w") as f:
+    with open(filepath, "w", encoding='utf-8') as f:
         json.dump(asdict(hardware_info), f, indent=2)
 
 
