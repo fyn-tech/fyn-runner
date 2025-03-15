@@ -2,8 +2,9 @@
 name = "fyn-runner"
 version = "0.1.0"
 dependencies = [
-    "psutil",
+    "appdirs",
     "nvidia-ml-py",
+    "psutil",
 ]
 
 [project.optional-dependencies]
