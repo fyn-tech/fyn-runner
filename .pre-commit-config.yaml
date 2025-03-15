@@ -1,0 +1,31 @@
+repos:
+- repo: https://github.com/pre-commit/pre-commit-hooks
+  rev: v4.6.0
+  hooks:
+  - id: trailing-whitespace
+  - id: end-of-file-fixer
+  - id: check-yaml
+
+- repo: https://github.com/pycqa/flake8
+  rev: 7.0.0
+  hooks:
+    - id: flake8
+      entry: pflake8
+      additional_dependencies: [pyproject-flake8==7.0.0]
+
+- repo: https://github.com/pycqa/pylint
+  rev: v3.3.5
+  hooks:
+    - id: pylint
+      entry: pylint
+      language: system
+      args: [--rcfile=pyproject.toml]
+
+- repo: local
+  hooks:
+  - id: autopep8
+    name: autopep8
+    entry: autopep8
+    language: system
+    types: [python]
+    args: [--global-config=pyproject.toml, --in-place]
