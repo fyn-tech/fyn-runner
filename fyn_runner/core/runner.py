@@ -1,4 +1,4 @@
-# Copyright (C) 2025 Bevan W.S. Jones
+# Copyright (C) 2025 Fyn-Runner Authors
 #
 # This program is free software: you can redistribute it and/or modify it under the terms of the GNU
 # General Public License as published by the Free Software Foundation, either version 3 of the
@@ -9,11 +9,12 @@
 # General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License along with this program. If not,
-# see <https://www.gnu.org/licenses/>.
+#  see <https://www.gnu.org/licenses/>.
 
-from fyn_runner.config import settings as settings
+
+from fyn_runner import config
 from . import installed_setting as hard_settings
 
-sett = settings.load(hard_settings.CONFIG_FILE)
+sett = config.load(hard_settings.CONFIG_FILE)
 
-settings.save(sett, hard_settings.CONFIG_FILE)
+config.save(sett, hard_settings.CONFIG_FILE)

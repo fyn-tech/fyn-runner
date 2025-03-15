@@ -1,4 +1,4 @@
-# Copyright (C) 2025 Bevan W.S. Jones
+# Copyright (C) 2025 Fyn-Runner Authors
 #
 # This program is free software: you can redistribute it and/or modify it under the terms of the GNU
 # General Public License as published by the Free Software Foundation, either version 3 of the
@@ -10,6 +10,7 @@
 #
 # You should have received a copy of the GNU General Public License along with this program. If not,
 #  see <https://www.gnu.org/licenses/>.
+
 
 import yaml
 from pathlib import Path
@@ -74,7 +75,7 @@ def load(config_path: str | Path) -> Settings:
             )
         yaml_data["local_cache"] = LocalCache(**yaml_data["local_cache"])
     if "api_settings" in yaml_data:
-        yaml_data["api_settings"] = APISettings(**yaml_data["api_settings"])
+        yaml_data["api_settings"] = APISettings(**yaml_data["api_set  tings"])
 
     return Settings(**yaml_data)
 

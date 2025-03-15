@@ -11,10 +11,11 @@
 # You should have received a copy of the GNU General Public License along with this program. If not,
 # see <https://www.gnu.org/licenses/>.
 
+# pylint: disable=redefined-outer-name
+from pathlib import Path
 
 import pytest
-from pathlib import Path
-from fyn_runner.config.settings import (
+from fyn_runner.config import (
     Settings,
     State,
     LocalCache,

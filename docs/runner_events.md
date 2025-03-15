@@ -5,7 +5,7 @@ sequenceDiagram
     participant user
     participant fyn-runner
     participant fyn-api
-    
+
     user->>fyn-api: Request new runner
     fyn-api-->>user: Responses runner payload
     user->>fyn-runner: Start installation process
@@ -23,7 +23,7 @@ sequenceDiagram
         fyn-runner->>os-service: Load LaunchDaemon
         Note over fyn-runner,os-service: /Library/LaunchDaemons/
     end
-    
+
     alt Registration Success
         os-service-->>fyn-runner: Service registered
         fyn-runner-->>user: Installation complete
@@ -53,11 +53,11 @@ sequenceDiagram
     fyn-runner->>fyn-api: Request runner registration
     fyn-api->>fyn-api: Generate new 'null runner' with runner ID & Auth.
     fyn-api-->>fyn-runner: Respond runner ID & Auth.
-    fyn-runner->>fyn-runner: Save runner ID & Auth.   
-    fyn-runner-->>user: Report successful registration 
+    fyn-runner->>fyn-runner: Save runner ID & Auth.
+    fyn-runner-->>user: Report successful registration
     else Invalid
     fyn-api-->>fyn-runner: Respond Invalidate credentials
-    fyn-runner-->>user: Report unsuccessful registration 
+    fyn-runner-->>user: Report unsuccessful registration
     end
 ```
 
@@ -79,7 +79,7 @@ sequenceDiagram
     %% Hardware Check
     fyn-runner->>fyn-runner: Collect current hardware data
     fyn-runner->>local cache: Check hardware cache
-    
+
     alt No Cache Exists
         local cache-->>fyn-runner: Cache missing
         fyn-runner->>local cache: Create hardware cache
@@ -92,7 +92,7 @@ sequenceDiagram
             fyn-runner->>fyn-api: Post hardware updates
         end
     end
-    
+
     fyn-api-->>fyn-runner: Confirm hardware status
 
     %% Enter Ready State
@@ -105,7 +105,7 @@ sequenceDiagram
 - Once started we enter the main active state.
 - We can accept jobs, and will launch new jobs threads when requested - (see Job events for event details.)
 - Use web sockets
-  
+
 ```mermaid
 sequenceDiagram
     box fyn-runner process
@@ -118,7 +118,7 @@ sequenceDiagram
     loop Main Active State Loop
         main thread->>fyn-api: Post heartbeat (~every 60s)
         fyn-api-->>main thread: Response Heartbeat acknowledge
-        
+
         alt Connection Lost
             main thread->>main thread: Enter reconnection state
             loop Until Reconnected (with backoff)
@@ -163,7 +163,7 @@ sequenceDiagram
             job thread->>job thread: Execute job steps
             job thread->>local cache: Update progress
             job thread->>fyn-api: Report progress + job data (setting based interval)
-        end    
+        end
         job thread->>fyn-api: Report job completion, success/fail
         job thread->>local cache: archive job results
         deactivate job thread

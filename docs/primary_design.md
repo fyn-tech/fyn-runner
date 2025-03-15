@@ -30,7 +30,7 @@ The above requirements will be met the use of the following components.
 - Reports outcome.
 
 ### File manager
-- Manages simulation i/o (there where) 
+- Manages simulation i/o (there where)
 - Synchronisation with cloud and data-back up.
 - clean-up of old sims.
 
@@ -39,7 +39,7 @@ The above requirements will be met the use of the following components.
 - responsible for raising back end connection and heartbeat.
 - handles authentication to server
 - communication and data transfer between runner and api (and maybe front end).
-  
+
 ### Hardware Manager
 - Collects system relevant specs for analysis resource availability.
 - Detects hardware changes and updates.
@@ -49,7 +49,7 @@ The above requirements will be met the use of the following components.
 - Tools for the user to directly interact with the runner (cmd)
 - automatic updating?
 
-## Requirements Mapping 
+## Requirements Mapping
 
 Briefly the requirements will be fulfilled by the following components.
 
@@ -106,7 +106,7 @@ classDiagram
     %% public interface/facade:
     start_up()
     shut_down()
-   
+
     %% Startup procedures
     _load_configuration()
     _raise_server_connection()
@@ -152,18 +152,18 @@ classDiagram
 
     class Status {
       <<enum>>
-    } 
+    }
   }
 
   class FileManager {
     %% file_database stores path to folder database
-    Path simulation_file_database  
+    Path simulation_file_database
     Path runner_folder
     RunnerConfig: config
-  } 
-  
+  }
+
   class HardwareManager {
-    <<utility>>   
+    <<utility>>
     collect_system_specs()
     detect_hardware_changes()
   }
@@ -188,29 +188,29 @@ classDiagram
       _fetch_api() -> APIEndPoint
       _send_message(Message) -> bool
       _listen_api()
-    } 
+    }
 
     class APIEndPoint {
       <<enum>>
-    } 
+    }
 
     class MessageQueue {
       Message[] messages
 
       is_empty() ->bool
       push_message(Message)
-      get_next_message() -> Message      
-    } 
+      get_next_message() -> Message
+    }
 
     class Message {
       data data
       dataType type
-      int priority 
-    } 
+      int priority
+    }
   }
 
   class SystemIntegration {
-    
+
   }
 ```
 
@@ -224,4 +224,4 @@ In general the runner needs to be 'fault' tolerant and should try to 'keep' runn
 - Error: An serious problem has occurred by the program will attempt to continue.
 - Critical: No way to continue, exit program.
 
-In general simulations should not be terminated if the runner goes down. At some point in the future we will have a 're-attach' to running simulation. That say a runner going down should not propagate to the simulation. 
+In general simulations should not be terminated if the runner goes down. At some point in the future we will have a 're-attach' to running simulation. That say a runner going down should not propagate to the simulation.
