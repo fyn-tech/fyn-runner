@@ -17,13 +17,14 @@ from pydantic import BaseModel, Field
 
 
 class LoggingConfig(BaseModel):
-    """Configuration for environment settings."""
+    """Configuration for the logger."""
     level: str = Field(
         default="INFO",
         description="Logging level (DEBUG, INFO, WARNING, ERROR, CRITICAL)")
     develop: bool = Field(
         default=False,
-        description="Enable development mode with console logging")
+        description="Enable development mode, which adds a stream hander for additional console "
+                    "logging")
     retention: int = Field(default=30, description="Number of days to retain log files")
 
 

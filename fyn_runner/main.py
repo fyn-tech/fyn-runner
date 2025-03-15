@@ -13,7 +13,6 @@
 
 
 import argparse
-from pathlib import Path
 
 from fyn_runner.config import RunnerConfig
 from fyn_runner.utilities.config_manager import ConfigManager
@@ -37,15 +36,14 @@ def main():
         help="The path to the config file")
     args = parser.parse_args()
 
-    if not Path(args.config).exists():
-        raise FileExistsError(f"Cannot start, config file not found: {args.config}")
-
-    # load config (still to code) ...
-    config = ConfigManager(args.config, RunnerConfig)
-    config.load()
-    print(config.model_dump())
-    file_manager = FileManager(config.file_manager.working_directory)
-    create_logger(file_manager.log_dir, config.logging.level, config.logging.develop)
+    # Boot-up of runner
+    try:
+        config = ConfigManager(args.config, RunnerConfig)
+        config.load()
+        file_manager = FileManager(config.file_manager.working_directory)
+        create_logger(file_manager.log_dir, config.logging.level, config.logging.develop)
+    except Exception as e:
+        print(f"Fatal error encounter on startup: {e}")
 
 
 if __name__ == "__main__":

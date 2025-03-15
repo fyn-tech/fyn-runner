@@ -22,8 +22,11 @@ T = TypeVar('T', bound=BaseModel)
 
 class ConfigManager(Generic[T]):
     """
-    Manages configuration for all components of the application.
-    Provides access to component-specific configurations.
+    Manages an injected pydantic configuration (typically derived from the BaseModel). This manager
+    effectively wraps the configuration, from which loading and saving to disk is possible along
+    with general retrieval.
+
+    The generic type T must be a subclass of BaseModel.
     """
 
     def __init__(self, config_file_path: Path, model_cls: Type[T]):
@@ -34,16 +37,33 @@ class ConfigManager(Generic[T]):
             config_file_path: Path to the configuration file
             model_cls: Pydantic model class to use for this configuration
         """
+
         self.config_path = Path(config_file_path)
         self.model_cls = model_cls
         self._config: Optional[T] = None
+        self.logger = None
 
     def __getattr__(self, name):
-        # Forward attribute access directly to the underlying config
+        """
+        Forwards attribute access to the underlying configuration object.
+
+        Raises:
+            ValueError: If no configuration has been loaded yet
+        """
+
+        if self._config is None:
+            raise ValueError("No configuration loaded")
         return getattr(self._config, name)
+
+    def attach_logger(self, logger):
+        """
+        Attaches a logger to the configuration manager.
+        """
+        self.logger = logger
 
     def load(self) -> T:
         """Load the configuration from file."""
+
         if not self.config_path.exists():
             raise FileNotFoundError(f"Configuration file not found: {self.config_path}")
 
@@ -54,7 +74,12 @@ class ConfigManager(Generic[T]):
         return self._config
 
     def save(self):
-        """Save the current configuration to file."""
+        """
+        Save the current configuration to file in YAML format.
+
+        Raises:
+            ValueError: If no configuration has been loaded yet
+        """
         if self._config is None:
             raise ValueError("No configuration loaded")
 
@@ -63,7 +88,15 @@ class ConfigManager(Generic[T]):
 
     @property
     def config(self) -> T:
-        """Get the full configuration."""
+        """
+        Returns the complete configuration object.
+
+        Returns:
+            T: The loaded configuration
+
+        Raises:
+            ValueError: If no configuration has been loaded yet
+        """
         if self._config is None:
             raise ValueError("No configuration loaded")
 
