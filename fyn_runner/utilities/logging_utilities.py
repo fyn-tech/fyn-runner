@@ -20,8 +20,8 @@ from pathlib import Path
 
 def create_logger(
         log_dir,
-        name="fyn_runner",
         level=logging.INFO,
+        name="fyn_runner",
         dev_mode=False,
         retention_days=30):
     """
@@ -33,8 +33,8 @@ def create_logger(
 
      Args:
          log_dir (Path): Directory where log files will be stored
-         name (str): Logger name for hierarchical logging and identification
          level (int): Logging level threshold (e.g., logging.INFO, logging.DEBUG)
+         name (str): Logger name for hierarchical logging and identification
          dev_mode (bool): When True, logs will be output to console in addition to file
          retention_days (int): Number of days to keep log files before deletion
 
