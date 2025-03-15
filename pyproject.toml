@@ -5,6 +5,7 @@ dependencies = [
     "appdirs",
     "nvidia-ml-py",
     "psutil",
+    "pydantic"
 ]
 
 [project.optional-dependencies]

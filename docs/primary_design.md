@@ -204,7 +204,7 @@ classDiagram
 
     class Message {
       data data
-      dataType type
+      MessageType type
       int priority
     }
   }
