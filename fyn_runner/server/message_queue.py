@@ -10,3 +10,23 @@
 #
 # You should have received a copy of the GNU General Public License along with this program. If not,
 #  see <https://www.gnu.org/licenses/>.
+
+from dataclasses import dataclass, field
+from typing import List
+
+from fyn_runner.server.message import Message
+
+
+@dataclass
+class MessageQueue:
+
+    queue: List[Message] = field(default_factory=list)
+
+    def is_empty():
+        return not len(list)
+
+    def push_message(Message):
+        pass
+
+    def get_next_message():
+        pass
