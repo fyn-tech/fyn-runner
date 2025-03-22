@@ -37,18 +37,18 @@ class FileManager:
 
         # Set up directories using appdirs if base_dir not specified
         if base_dir is None:
-            self._runner_folder = Path(appdirs.user_data_dir(app_name, app_author))
+            self._runner_dir = Path(appdirs.user_data_dir(app_name, app_author))
             self._cache_dir = Path(appdirs.user_cache_dir(app_name, app_author))
             self._config_dir = Path(appdirs.user_config_dir(app_name, app_author))
             self._log_dir = Path(appdirs.user_log_dir(app_name, app_author))
         else:
-            self._runner_folder = Path(base_dir)
-            self._cache_dir = self._runner_folder / "cache"
-            self._config_dir = self._runner_folder / "config"
-            self._log_dir = self._runner_folder / "logs"
+            self._runner_dir = Path(base_dir)
+            self._cache_dir = self._runner_dir / "cache"
+            self._config_dir = self._runner_dir / "config"
+            self._log_dir = self._runner_dir / "logs"
 
         # Simulation directory is always in user data (place holder)
-        self._simulation_dir = self._runner_folder / "simulations"
+        self._simulation_dir = self._runner_dir / "simulations"
 
         # Initialize directories
         self._init_directories()
@@ -56,7 +56,8 @@ class FileManager:
     def _init_directories(self):
         """Create folder structure."""
         for directory in [
-            self.runner_folder,
+            self.runner_dir,
+            self.cache_dir,
             self.config_dir,
             self.log_dir,
             self.simulation_dir
@@ -64,9 +65,9 @@ class FileManager:
             directory.mkdir(parents=True, exist_ok=True)
 
     @property
-    def runner_folder(self):
+    def runner_dir(self):
         """Path to the runner directory."""
-        return self._runner_folder
+        return self._runner_dir
 
     @property
     def cache_dir(self):
