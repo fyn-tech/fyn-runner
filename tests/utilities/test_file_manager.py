@@ -16,16 +16,24 @@ import tempfile
 from pathlib import Path
 from unittest.mock import patch
 
+import pytest
+
 from fyn_runner.utilities.file_manager import FileManager
 
 
 class TestFileManager:
     """Test suite for FileManager utility."""
 
-    def test_default_directory_initialisation(self):
+    @pytest.fixture
+    def temp_dir(self):
+        """Create a temporary directory for log files."""
+        with tempfile.TemporaryDirectory() as temp_dir:
+            yield Path(temp_dir)
+
+    def test_default_directory_initialisation(self, temp_dir):
         """Mock appdirs and ensure correct directory creation"""
 
-        temp_path = Path(tempfile.mkdtemp())
+        temp_path = temp_dir
         with patch('appdirs.user_data_dir') as mock_data_dir, \
                 patch('appdirs.user_cache_dir') as mock_cache_dir, \
                 patch('appdirs.user_config_dir') as mock_config_dir, \
@@ -43,13 +51,11 @@ class TestFileManager:
             assert Path(temp_path / 'logs').exists()
             assert Path(temp_path / 'simulations').exists()
 
-        shutil.rmtree(temp_path)
-
-    def test_default_directory_with_app_name(self):
+    def test_default_directory_with_app_name(self, temp_dir):
         """Mock appdirs, and change program name, and ensure correct directory creation"""
 
         name = 'test_runner'
-        temp_path = Path(tempfile.mkdtemp())
+        temp_path = temp_dir
         with patch('appdirs.user_data_dir') as mock_data_dir, \
                 patch('appdirs.user_cache_dir') as mock_cache_dir, \
                 patch('appdirs.user_config_dir') as mock_config_dir, \
@@ -69,23 +75,20 @@ class TestFileManager:
             assert Path(temp_path / name / 'logs').exists()
             assert Path(temp_path / name / 'simulations').exists()
 
-        shutil.rmtree(temp_path)
-
-    def test_custom_directory_initialisation(self):
+    def test_custom_directory_initialisation(self, temp_dir):
         """Test dependency injection path and ensure directory creation"""
 
-        temp_path = Path(tempfile.mkdtemp())
+        temp_path = Path(temp_dir)
         FileManager(temp_path)
         assert Path(temp_path / 'cache').exists()
         assert Path(temp_path / 'config').exists()
         assert Path(temp_path / 'logs').exists()
         assert Path(temp_path / 'simulations').exists()
-        shutil.rmtree(temp_path)
 
-    def test_custom_string_directory_initialisation(self):
+    def test_custom_string_directory_initialisation(self, temp_dir):
         """Test string dependency injection path and ensure directory creation"""
 
-        temp_path = str(tempfile.mkdtemp())  # explicitly make string
+        temp_path = str(temp_dir)  # explicitly make string
         FileManager(temp_path)
         assert Path(temp_path + '/cache').exists()
         assert Path(temp_path + '/config').exists()
@@ -93,14 +96,12 @@ class TestFileManager:
         assert Path(temp_path + '/simulations').exists()
         shutil.rmtree(temp_path)
 
-    def test_simulation_dir_setter(self):
+    def test_simulation_dir_setter(self, temp_dir):
         """Test addition of a simulation directory """
-        temp_path = Path(tempfile.mkdtemp())
+        temp_path = temp_dir
         manager = FileManager(temp_path)
 
         new_sim_dir = temp_path / "new_simulations"
         manager.simulation_dir = new_sim_dir
 
         assert new_sim_dir.exists()
-
-        shutil.rmtree(temp_path)
