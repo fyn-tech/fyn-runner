@@ -15,6 +15,7 @@
 import argparse
 
 from fyn_runner.config import RunnerConfig
+from fyn_runner.server.server_proxy import ServerProxy
 from fyn_runner.utilities.config_manager import ConfigManager
 from fyn_runner.utilities.file_manager import FileManager
 from fyn_runner.utilities.logging_utilities import create_logger
@@ -41,9 +42,10 @@ def main():
         config = ConfigManager(args.config, RunnerConfig)
         config.load()
         file_manager = FileManager(config.file_manager.working_directory)
-        create_logger(file_manager.log_dir, config.logging.level, config.logging.develop)
+        logger = create_logger(file_manager.log_dir, config.logging.level, config.logging.develop)
+        ServerProxy(logger, file_manager, config.server_proxy)
     except Exception as e:
-        print(f"Fatal error encounter on startup: {e}")
+        logger.critical(f"Fatal error encounter on startup: {e}")
 
 
 if __name__ == "__main__":
