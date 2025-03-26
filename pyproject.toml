@@ -28,5 +28,7 @@ max-line-length = 100
 disable = [
     "missing-module-docstring",
     "broad-exception-caught",
-    "logging-fstring-interpolation"
+    "logging-fstring-interpolation",
+    "too-many-arguments",
+    "too-many-positional-arguments"
 ]

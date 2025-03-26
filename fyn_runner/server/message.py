@@ -12,11 +12,126 @@
 #  see <https://www.gnu.org/licenses/>.
 
 
-from dataclasses import dataclass
-from typing import Any
+from enum import Enum, auto
+from pathlib import Path
+from typing import Dict, Optional
+
+from pydantic import BaseModel, Field, HttpUrl
 
 
-@dataclass
-class Message:
-    data: Any = None
-    priority: int = 0
+class HttpMethod(Enum):
+    """HTTP method for the Message Class"""
+    GET = auto()
+    POST = auto()
+    PUT = auto()
+    PATCH = auto()
+    DELETE = auto()
+
+
+class Message(BaseModel):
+    """
+    Represents a message to be sent to or received from the API.
+
+    A Message encapsulates all information needed to make an HTTP request to the API, including the
+    endpoint, method, headers, and content payload.
+    """
+
+    endpoint: HttpUrl = Field(..., json_schema_extra={"allowed_schemes": ["http", "https"]})
+    method: HttpMethod = Field(...)
+    header: Dict[str, str] = Field(default_factory=dict)
+    params: Optional[Dict[str, str]] = Field(None)
+    priority: int = Field(default=0)
+
+    json_data: Optional[Dict] = Field(None)
+    file_path: Optional[Path] = Field(None)
+
+    @classmethod
+    def json_message(cls, endpoint, method, json_data, header=None, priority=0, params=None):
+        """
+        Create a new Message instance with a JSON payload.
+
+        Args:
+            endpoint (str): The API endpoint URL path
+            method (HttpMethod): The HTTP method to use for this request
+            json_data (dict): The JSON data to be sent in the request body
+            header (dict, optional): Additional HTTP headers to include in the request
+            priority (int, optional): Message priority for queue processing (higher = more priority)
+            params (dict, optional): URL query parameters to append to the endpoint
+
+        Returns:
+            Message: A new Message instance configured for JSON data transmission
+        """
+
+        message_headers = {"Content-Type": "application/json"}
+        if header:
+            if ("Content-Type" in header.keys() and header["Content-Type"] != "application/json"):
+                raise RuntimeError("Attempting to specify 'Content-Type', other than "
+                                   f"application/json: {header["Content-Type"]}")
+            message_headers.update(header)
+
+        return cls(
+            endpoint=endpoint,
+            method=method,
+            json_data=json_data,
+            header=message_headers,  # Changed from headers to header
+            params=params,
+            priority=priority
+        )
+
+    @classmethod
+    def file_message(cls, endpoint, method, file_path, header=None, priority=0, params=None):
+        """
+        Create a new Message instance with a file payload.
+
+        Args:
+            endpoint (str): The API endpoint URL path
+            method (HttpMethod): The HTTP method to use for this request
+            file_path (Path): The path to the file to send, must exist when message sent
+            header (dict, optional): Additional HTTP headers to include in the request
+            priority (int, optional): Message priority for queue processing (higher = more priority)
+            params (dict, optional): URL query parameters to append to the endpoint
+
+        Returns:
+            Message: A new Message instance configured for JSON data transmission
+        """
+
+        message_headers = {}
+        if header:
+            message_headers.update(header)
+
+        return cls(
+            endpoint=endpoint,
+            method=method,
+            file_path=file_path,
+            header=message_headers,  # Changed from headers to header
+            params=params,
+            priority=priority
+        )
+
+    @classmethod
+    def query_message(cls, endpoint: str, params: Dict, priority: int = 0,
+                      extra_headers: Optional[Dict] = None) -> 'Message':
+        """
+        Create a GET message with query parameters.
+
+        Args:
+            endpoint (str): The API endpoint URL path
+            params (Dict): Query parameters to append to the URL
+            priority (int, optional): Message priority for queue processing
+            extra_headers (Dict, optional): Additional HTTP headers to include
+
+        Returns:
+            Message: A new Message instance configured for a GET request
+        """
+
+        headers = {}
+        if extra_headers:
+            headers.update(extra_headers)
+
+        return cls(
+            endpoint=endpoint,
+            method=HttpMethod.GET,
+            params=params,
+            header=headers,  # Changed from headers to header
+            priority=priority
+        )
