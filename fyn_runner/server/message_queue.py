@@ -13,6 +13,7 @@
 
 from dataclasses import dataclass, field
 from typing import List
+from threading import RLock
 
 from fyn_runner.server.message import Message
 
@@ -21,12 +22,20 @@ from fyn_runner.server.message import Message
 class MessageQueue:
 
     queue: List[Message] = field(default_factory=list)
+    _lock: RLock = field(default_factory=RLock, repr=False)
 
-    def is_empty():
-        return not len(list)
+    def is_empty(self):
+        with self._lock:
+            return len(self.queue) == 0
 
-    def push_message(Message):
-        pass
+    def push_message(self, message):
+        with self._lock:
+            # FIXME - do I need to validate?
+            # FIXME need to sort
+            self.queue.append(message)
 
-    def get_next_message():
-        pass
+    def get_next_message(self):
+        with self._lock:
+            if not self.queue:
+                return None
+            return self.queue.pop(-1)
