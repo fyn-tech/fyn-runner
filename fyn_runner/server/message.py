@@ -33,11 +33,11 @@ class Message(BaseModel):
     Represents a message to be sent to or received from the API.
 
     A Message encapsulates all information needed to make an HTTP request to the API, including the
-    endpoint, method, headers, and content payload. This class is also responsible for message
+    api_path, method, headers, and content payload. This class is also responsible for message
     validation.
     """
 
-    endpoint: HttpUrl = Field(..., json_schema_extra={"allowed_schemes": ["http", "https"]})
+    api_path: HttpUrl = Field(..., json_schema_extra={"allowed_schemes": ["http", "https"]})
     method: HttpMethod = Field(...)
     header: Dict[str, str] = Field(default_factory=dict)
     params: Optional[Dict[str, str]] = Field(None)
@@ -47,17 +47,17 @@ class Message(BaseModel):
     file_path: Optional[Path] = Field(None)
 
     @classmethod
-    def json_message(cls, endpoint, method, json_data, header=None, priority=0, params=None):
+    def json_message(cls, api_path, method, json_data, header=None, priority=0, params=None):
         """
         Create a new Message instance with a JSON payload.
 
         Args:
-            endpoint (str): The API endpoint URL path
+            api_path (str): The API URL path
             method (HttpMethod): The HTTP method to use for this request
             json_data (dict): The JSON data to be sent in the request body
             header (dict, optional): Additional HTTP headers to include in the request
             priority (int, optional): Message priority for queue processing (higher = more priority)
-            params (dict, optional): URL query parameters to append to the endpoint
+            params (dict, optional): URL query parameters to append to the api_path
 
         Returns:
             Message: A new Message instance configured for JSON data transmission
@@ -71,7 +71,7 @@ class Message(BaseModel):
             message_headers.update(header)
 
         return cls(
-            endpoint=endpoint,
+            api_path=api_path,
             method=method,
             json_data=json_data,
             header=message_headers,  # Changed from headers to header
@@ -80,17 +80,17 @@ class Message(BaseModel):
         )
 
     @classmethod
-    def file_message(cls, endpoint, method, file_path, header=None, priority=0, params=None):
+    def file_message(cls, api_path, method, file_path, header=None, priority=0, params=None):
         """
         Create a new Message instance with a file payload.
 
         Args:
-            endpoint (str): The API endpoint URL path
+            api_path (str): The API URL path
             method (HttpMethod): The HTTP method to use for this request
             file_path (Path): The path to the file to send, must exist when message sent
             header (dict, optional): Additional HTTP headers to include in the request
             priority (int, optional): Message priority for queue processing (higher = more priority)
-            params (dict, optional): URL query parameters to append to the endpoint
+            params (dict, optional): URL query parameters to append to the api_path
 
         Returns:
             Message: A new Message instance configured for JSON data transmission
@@ -101,7 +101,7 @@ class Message(BaseModel):
             message_headers.update(header)
 
         return cls(
-            endpoint=endpoint,
+            api_path=api_path,
             method=method,
             file_path=file_path,
             header=message_headers,  # Changed from headers to header
@@ -110,13 +110,14 @@ class Message(BaseModel):
         )
 
     @classmethod
-    def query_message(cls, endpoint: str, params: Dict, priority: int = 0,
+    def query_message(cls, api_path: str, params: Dict, priority: int = 0,
                       extra_headers: Optional[Dict] = None) -> 'Message':
         """
+        TODO: will correct method when we do the receive side.
         Create a GET message with query parameters.
 
         Args:
-            endpoint (str): The API endpoint URL path
+            api_path (str): The API URL path
             params (Dict): Query parameters to append to the URL
             priority (int, optional): Message priority for queue processing
             extra_headers (Dict, optional): Additional HTTP headers to include
@@ -130,9 +131,9 @@ class Message(BaseModel):
             headers.update(extra_headers)
 
         return cls(
-            endpoint=endpoint,
+            api_path=api_path,
             method=HttpMethod.GET,
             params=params,
-            header=headers,  # Changed from headers to header
+            header=headers,
             priority=priority
         )

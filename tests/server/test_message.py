@@ -26,11 +26,11 @@ class TestMessage:
         endpoint = "https://api.example.com/endpoint"
 
         message = Message(
-            endpoint=endpoint,
+            api_path=endpoint,
             method=HttpMethod.GET
         )
 
-        assert str(message.endpoint) == endpoint
+        assert str(message.api_path) == endpoint
         assert message.method == HttpMethod.GET
         assert message.header == {}
         assert message.params is None
@@ -47,7 +47,7 @@ class TestMessage:
         file_path = Path("/path/to/file")
 
         message = Message(
-            endpoint=endpoint,
+            api_path=endpoint,
             method=HttpMethod.POST,
             header=header,
             params=params,
@@ -56,7 +56,7 @@ class TestMessage:
             file_path=file_path
         )
 
-        assert str(message.endpoint) == endpoint
+        assert str(message.api_path) == endpoint
         assert message.method == HttpMethod.POST
         assert message.header == header
         assert message.params == params
@@ -73,7 +73,7 @@ class TestMessage:
 
         # Actually call the class method here
         message = Message.json_message(
-            endpoint=endpoint,
+            api_path=endpoint,
             method=HttpMethod.POST,
             json_data=json_data,
             header=header,
@@ -81,7 +81,7 @@ class TestMessage:
             params=params
         )
 
-        assert str(message.endpoint) == endpoint
+        assert str(message.api_path) == endpoint
         assert message.method == HttpMethod.POST
         assert "Content-Type" in message.header
         assert message.header["Content-Type"] == "application/json"
@@ -100,7 +100,7 @@ class TestMessage:
 
         # Actually call the class method here
         message = Message.file_message(
-            endpoint=endpoint,
+            api_path=endpoint,
             method=HttpMethod.POST,
             file_path=file_path,
             header=header,
@@ -108,7 +108,7 @@ class TestMessage:
             params=params
         )
 
-        assert str(message.endpoint) == endpoint
+        assert str(message.api_path) == endpoint
         assert message.method == HttpMethod.POST
         assert message.header == header
         assert message.params == params
@@ -124,13 +124,13 @@ class TestMessage:
 
         # Actually call the class method here
         message = Message.query_message(
-            endpoint=endpoint,
+            api_path=endpoint,
             params=params,
             priority=1,
             extra_headers=extra_headers
         )
 
-        assert str(message.endpoint) == endpoint
+        assert str(message.api_path) == endpoint
         assert message.method == HttpMethod.GET
         assert message.header == extra_headers
         assert message.params == params
@@ -142,7 +142,7 @@ class TestMessage:
         """Test that json_message sets default Content-Type header."""
         # Actually call the class method here
         message = Message.json_message(
-            endpoint="https://api.example.com",
+            api_path="https://api.example.com",
             method=HttpMethod.POST,
             json_data={"data": "value"}
         )
@@ -153,7 +153,7 @@ class TestMessage:
         """Test that form_message sets default headers."""
         # Actually call the class method here
         message = Message.file_message(
-            endpoint="https://api.example.com",
+            api_path="https://api.example.com",
             method=HttpMethod.POST,
             file_path=Path("/path/to/file")
         )
@@ -164,7 +164,7 @@ class TestMessage:
         """Test that query_message sets default headers."""
         # Actually call the class method here
         message = Message.query_message(
-            endpoint="https://api.example.com",
+            api_path="https://api.example.com",
             params={"key": "value"}
         )
 
@@ -177,7 +177,7 @@ class TestMessage:
         # The method should raise a RuntimeError when trying to change Content-Type
         with pytest.raises(RuntimeError, match="Attempting to specify 'Content-Type'"):
             Message.json_message(
-                endpoint="https://api.example.com",
+                api_path="https://api.example.com",
                 method=HttpMethod.POST,
                 json_data={"data": "value"},
                 header=custom_headers
@@ -189,7 +189,7 @@ class TestMessage:
 
         # This should work fine since Content-Type is the same
         message = Message.json_message(
-            endpoint="https://api.example.com",
+            api_path="https://api.example.com",
             method=HttpMethod.POST,
             json_data={"data": "value"},
             header=custom_headers
@@ -209,7 +209,7 @@ class TestMessage:
 
         for method in methods:
             message = Message(
-                endpoint="https://api.example.com",
+                api_path="https://api.example.com",
                 method=method
             )
             assert message.method == method
