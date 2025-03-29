@@ -6,7 +6,8 @@ dependencies = [
     "nvidia-ml-py",
     "psutil",
     "pydantic",
-    "pyyaml"
+    "pyyaml",
+    "websocket-client"
 ]
 
 [project.optional-dependencies]

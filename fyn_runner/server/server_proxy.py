@@ -12,12 +12,14 @@
 #  see <https://www.gnu.org/licenses/>.
 
 import atexit
+import json
 import threading
 import time
 from concurrent.futures import Future
 from urllib.parse import urljoin
 
 import requests
+from websocket import WebSocketApp
 
 from fyn_runner.server.message import HttpMethod, Message
 from fyn_runner.server.message_queue import MessageQueue
@@ -55,12 +57,17 @@ class ServerProxy:
         # Websocket message handling and related
         self._observers = {}
         self._observers_lock = threading.RLock()
+        self._ws: WebSocketApp = None  # only the _ws_thread should access
+        self._ws_connected: bool = False
+        self._ws_thread: threading.Thread = threading.Thread(target=self._ws_listen)
+        self._ws_thread.daemon = True
 
         # initialisation procedure
         self._fetch_api()
         self._raise_connection()  # don't catch here, allow propagation at initialisation.
         atexit.register(self._report_status, 'offline')
         self._send_thread.start()
+        self._ws_thread.start()
 
     def push_message(self, message):
         """
@@ -311,6 +318,98 @@ class ServerProxy:
                 except Exception as e:
                     future.set_exception(e)
 
-    def _listen_api(self):
+    def _ws_listen(self):
         """todo"""
-        pass
+
+        ws_url = self.api_url.replace('https://', 'wss://') + f'/runner/{self.id}'
+
+        while self._running:
+            try:
+                # Connect and listen for messages
+                self._ws = WebSocketApp(
+                    ws_url,
+                    header={'Authorization': f'Bearer {self.token}'},
+                    on_message=self._on_ws_message,
+                    on_open=self._on_ws_open,
+                    on_close=self._on_ws_close,
+                    on_error=self._on_ws_error
+                )
+
+                self._ws.run_forever()
+
+                if self._running:
+                    self.logger.warning("WebSocket disconnected, reconnecting...")
+                    time.sleep(5)
+            except Exception as e:
+                self.logger.error(f"WebSocket error: {e}")
+                time.sleep(5)
+
+    def _on_ws_message(self, _ws, message_data):
+
+        message = json.loads(message_data)
+        message_type = message.get('type')
+        message_id = message.get('id')
+
+        if not message_type:
+            self.logger.warning(f"Received message without type: {message}")
+            self._ws_error_response(message_id,
+                                    "Websocket messages must contain a 'type' field.")
+            return
+
+        if not message_id:
+            self.logger.error(f"Received message with no id: {message}")
+            return
+
+        self.logger.debug(f"Received WebSocket message ({message_id}) {message_type}")
+
+        callback = None
+        with self._observers_lock:
+            callback = self._observers.get(message_type)
+
+        if callback:
+            try:
+                response = callback(message)
+
+                if not response:
+                    response = {'type': 'success'}
+
+                if 'id' not in response and message_id:
+                    response['response_to'] = message_id
+
+                self._ws.send(json.dumps(response))
+                self.logger.info(f"Websocket success response for message {message_id}")
+
+            except Exception as e:
+                error_msg = f"Error while processing message{message_id} {message_type}: {e}"
+                self.logger.error(error_msg)
+                self._ws_error_response(message_id, error_msg)
+
+        else:
+            error_msg = f"Unknown message type {message_type} for message {message_id}"
+            self.logger.error(error_msg)
+            self._ws_error_response(message_id, error_msg)
+
+    def _on_ws_open(self, _ws):
+        self.logger.info("WebSocket connection established")
+        self._ws_connected = True
+
+    def _on_ws_close(self, _ws, close_status_code, close_msg):
+        self.logger.info(f"WebSocket connection closed: {close_status_code} {close_msg}")
+        self._ws_connected = False
+
+    def _on_ws_error(self, _ws, error):
+        self.logger.error(f"WebSocket error: {error}")
+
+    def _ws_error_response(self, message_id, data):
+        if self._ws and self._ws_connected:  # Check connection state
+            error_response = {
+                "type": "error",
+                "response_to": message_id,
+                "data": data
+            }
+            try:
+                self._ws.send(json.dumps(error_response))
+            except Exception as e:
+                self.logger.error(f"Failed to send error response: {e}")
+        else:
+            self.logger.error("Cannot send error response: WebSocket not connected")
