@@ -33,7 +33,8 @@ class Message(BaseModel):
     Represents a message to be sent to or received from the API.
 
     A Message encapsulates all information needed to make an HTTP request to the API, including the
-    endpoint, method, headers, and content payload.
+    endpoint, method, headers, and content payload. This class is also responsible for message
+    validation.
     """
 
     endpoint: HttpUrl = Field(..., json_schema_extra={"allowed_schemes": ["http", "https"]})
