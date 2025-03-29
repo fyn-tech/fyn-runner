@@ -181,6 +181,50 @@ class TestServerProxy:
         # Verify the future was removed from _response_futures
         assert mock_message.msg_id not in server_proxy._response_futures
 
+    def test_register_observer(self, server_proxy):
+        """Test registering an observer."""
+        # Create a mock callback
+        mock_callback = MagicMock()
+
+        # Register the observer
+        server_proxy.register_observer("test_message", mock_callback)
+
+        # Verify it was registered
+        assert "test_message" in server_proxy._observers
+        assert server_proxy._observers["test_message"] == mock_callback
+
+        # Verify logging occurred
+        server_proxy.logger.info.assert_called_with("Registered observer test_message")
+
+    def test_register_duplicate_observer(self, server_proxy):
+        """Test that registering a duplicate observer raises an exception."""
+        # Register an initial observer
+        server_proxy.register_observer("test_message", MagicMock())
+
+        # Attempt to register a duplicate
+        with pytest.raises(RuntimeError, match="Trying to add to existing observer test_message"):
+            server_proxy.register_observer("test_message", MagicMock())
+
+    def test_deregister_observer(self, server_proxy):
+        """Test deregistering an observer."""
+        # First register an observer
+        mock_callback = MagicMock()
+        server_proxy.register_observer("test_message", mock_callback)
+
+        # Then deregister it
+        server_proxy.deregister_observer("test_message")
+
+        # Verify it was removed
+        assert "test_message" not in server_proxy._observers
+
+        # Verify logging occurred
+        server_proxy.logger.info.assert_called_with("Deregistered observer test_message")
+
+    def test_deregister_nonexistent_observer(self, server_proxy):
+        """Test that deregistering a non-existent observer raises an exception."""
+        with pytest.raises(RuntimeError, match="Trying to remove non-existant observer test_message"):
+            server_proxy.deregister_observer("test_message")
+
     def test_report_status_success(self, server_proxy):
         """Test _report_status when the request is successful."""
         # Mock the _send_message method to return a successful response

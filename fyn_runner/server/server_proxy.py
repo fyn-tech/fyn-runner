@@ -52,6 +52,10 @@ class ServerProxy:
         self._response_futures = {}
         self._response_futures_lock = threading.RLock()
 
+        # Websocket message handling and related
+        self._observers = {}
+        self._observers_lock = threading.RLock()
+
         # initialisation procedure
         self._fetch_api()
         self._raise_connection()  # don't catch here, allow propagation at initialisation.
@@ -105,17 +109,44 @@ class ServerProxy:
                 self._response_futures.pop(message.msg_id)
             raise  # ensures caller knows
 
-    def register_observer(self, name, call_back):
-        """todo"""
-        pass
+    def register_observer(self, message_type, call_back):
+        """
+        Register a callback function to be invoked when messages of the specified type are received.
 
-    def unregister_observer(self, name):
-        """todo"""
-        pass
+        Each message type can have only one observer at a time. Attempting to register a second
+        observer for the same message type will raise a RuntimeError.
 
-    def notify_observer(self, message):
-        """todo"""
-        pass
+        Args:
+            message_type (str): The type of message to observe
+            call_back (callable): Function to be called when a message of this type is received.
+                                Should accept a message parameter and return an optional response.
+
+        Raises:
+            RuntimeError: If an observer is already registered for this message type
+        """
+        with self._observers_lock:
+            if message_type not in self._observers:
+                self._observers[message_type] = call_back
+                self.logger.info(f"Registered observer {message_type}")
+            else:
+                raise RuntimeError(f"Trying to add to existing observer {message_type}")
+
+    def deregister_observer(self, message_type):
+        """
+        Remove a previously registered observer for the specified message type.
+
+        Args:
+            message_type (str): The type of message for which to remove the observer
+
+        Raises:
+            RuntimeError: If no observer is registered for this message type
+        """
+        with self._observers_lock:
+            if message_type in self._observers:
+                del self._observers[message_type]
+                self.logger.info(f"Deregistered observer {message_type}")
+            else:
+                raise RuntimeError(f"Trying to remove non-existant observer {message_type}")
 
     def _report_status(self, status, request_timeout=10):
         """
