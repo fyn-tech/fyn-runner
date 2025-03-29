@@ -402,7 +402,7 @@ class TestServerProxy:
 
         # Create a future and store it
         future = Future()
-        with server_proxy._response_lock:
+        with server_proxy._response_futures_lock:
             server_proxy._response_futures[mock_message.msg_id] = future
 
         # Call _handle_response_future
@@ -427,7 +427,7 @@ class TestServerProxy:
 
         # Create a future and store it
         future = Future()
-        with server_proxy._response_lock:
+        with server_proxy._response_futures_lock:
             server_proxy._response_futures[mock_message.msg_id] = future
 
         # Call _handle_response_future
@@ -453,7 +453,7 @@ class TestServerProxy:
 
         # Create a future for this message
         future = Future()
-        with server_proxy._response_lock:
+        with server_proxy._response_futures_lock:
             server_proxy._response_futures[message.msg_id] = future
 
         # Mock the requests library

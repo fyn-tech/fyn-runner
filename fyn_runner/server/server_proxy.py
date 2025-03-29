@@ -43,14 +43,14 @@ class ServerProxy:
         self.api_url = str(configuration.api_url).rstrip('/')
         self.report_interval = configuration.report_interval
 
-        # message handing
+        # HTTP message handing and related
         self._running: bool = True
         self._queue: MessageQueue = MessageQueue()
         self._new_send_message: threading.Event = threading.Event()
         self._send_thread: threading.Thread = threading.Thread(target=self._send_handler)
         self._send_thread.daemon = True
         self._response_futures = {}
-        self._response_lock = threading.RLock()
+        self._response_futures_lock = threading.RLock()
 
         # initialisation procedure
         self._fetch_api()
@@ -94,14 +94,14 @@ class ServerProxy:
         """
 
         new_future = Future()
-        with self._response_lock:
+        with self._response_futures_lock:
             self._response_futures[message.msg_id] = new_future
 
         try:
             self.push_message(message)
             return new_future
         except Exception:  # logger would have reported error, just clean future.
-            with self._response_lock:
+            with self._response_futures_lock:
                 self._response_futures.pop(message.msg_id)
             raise  # ensures caller knows
 
@@ -271,7 +271,7 @@ class ServerProxy:
 
     def _handle_response_future(self, message, response):
 
-        with self._response_lock:
+        with self._response_futures_lock:
             future = self._response_futures.pop(message.msg_id, None)
             if future:
                 self.logger.debug(f"Updating future for message {message.msg_id}")
