@@ -31,6 +31,7 @@ class TestMessage:
         )
 
         assert str(message.api_path) == endpoint
+        assert message.msg_id is not None
         assert message.method == HttpMethod.GET
         assert message.header == {}
         assert message.params is None
@@ -57,6 +58,7 @@ class TestMessage:
         )
 
         assert str(message.api_path) == endpoint
+        assert message.msg_id is not None
         assert message.method == HttpMethod.POST
         assert message.header == header
         assert message.params == params
@@ -82,6 +84,7 @@ class TestMessage:
         )
 
         assert str(message.api_path) == endpoint
+        assert message.msg_id is not None
         assert message.method == HttpMethod.POST
         assert "Content-Type" in message.header
         assert message.header["Content-Type"] == "application/json"
@@ -109,6 +112,7 @@ class TestMessage:
         )
 
         assert str(message.api_path) == endpoint
+        assert message.msg_id is not None
         assert message.method == HttpMethod.POST
         assert message.header == header
         assert message.params == params
@@ -131,12 +135,29 @@ class TestMessage:
         )
 
         assert str(message.api_path) == endpoint
+        assert message.msg_id is not None
         assert message.method == HttpMethod.GET
         assert message.header == extra_headers
         assert message.params == params
         assert message.priority == 1
         assert message.json_data is None
         assert message.file_path is None
+
+    def test_message_id_auto_generation(self):
+        """Test that msg_id is automatically generated when not provided."""
+        message1 = Message(
+            api_path="https://api.example.com/endpoint",
+            method=HttpMethod.GET
+        )
+        message2 = Message(
+            api_path="https://api.example.com/endpoint",
+            method=HttpMethod.GET
+        )
+
+        # Verify msg_id exists
+        assert message1.msg_id is not None
+        # Verify msg_ids are unique
+        assert message1.msg_id != message2.msg_id
 
     def test_json_message_default_headers(self):
         """Test that json_message sets default Content-Type header."""

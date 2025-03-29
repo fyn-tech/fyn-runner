@@ -11,12 +11,12 @@
 # You should have received a copy of the GNU General Public License along with this program. If not,
 #  see <https://www.gnu.org/licenses/>.
 
-
+import uuid
 from enum import Enum, auto
 from pathlib import Path
 from typing import Dict, Optional
 
-from pydantic import BaseModel, Field, HttpUrl
+from pydantic import UUID4, BaseModel, Field, HttpUrl
 
 
 class HttpMethod(Enum):
@@ -45,6 +45,7 @@ class Message(BaseModel):
 
     json_data: Optional[Dict] = Field(None)
     file_path: Optional[Path] = Field(None)
+    msg_id: UUID4 = Field(default_factory=uuid.uuid4)
 
     @classmethod
     def json_message(cls, api_path, method, json_data, header=None, priority=0, params=None):

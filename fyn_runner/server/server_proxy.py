@@ -63,10 +63,11 @@ class ServerProxy:
             None
         """
         try:
+            self.logger.debug(f"Pushing message {message.msg_id}")
             self._queue.push_message(message)
             self._new_send_message.set()
         except Exception as e:
-            self.logger.error(f"Failed to push message: {e}")
+            self.logger.error(f"Failed to push message ({message.msg_id}): {e}")
 
     def register_observer(self, name, call_back):
         """todo"""
@@ -157,7 +158,7 @@ class ServerProxy:
                     try:
                         self._send_message(message)
                     except Exception as e:
-                        self.logger.error(f"Error sending message: {e}")
+                        self.logger.error(f"Error sending message ({message.msg_id}): {e}")
 
             # Check if we need to report status
             current_time = time.time()
@@ -208,7 +209,7 @@ class ServerProxy:
             kwargs["json"] = message.json_data
 
         response: requests.Response = None
-        self.logger.debug(f"Sending message '{message.method.name}' with: {kwargs}")
+        self.logger.debug(f"Sending message '{message.msg_id}',  {kwargs}")
 
         match message.method:
             case HttpMethod.GET:
@@ -226,7 +227,8 @@ class ServerProxy:
 
         response.raise_for_status()
         result = response.json()
-        self.logger.info(f"Request successful: {message.method.name} {message.api_path}")
+        self.logger.info(f"Request successful for message ({message.msg_id}): "
+                         f"{message.method.name} {message.api_path}")
         return result
 
     def _listen_api(self):

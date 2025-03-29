@@ -15,8 +15,6 @@ import uuid
 
 from pydantic import UUID4, BaseModel, Field, HttpUrl
 
-print(uuid.uuid4())
-
 
 class ServerProxyConfig(BaseModel):
     """Configuration for the logger."""
