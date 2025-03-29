@@ -16,6 +16,7 @@
 import atexit
 import threading
 import time
+from concurrent.futures import Future
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
@@ -127,12 +128,58 @@ class TestServerProxy:
         error_msg = "Test error"
         server_proxy._queue.push_message = MagicMock(side_effect=Exception(error_msg))
 
-        # Call push_message
-        server_proxy.push_message(mock_message)
+        # Call push_message and expect exception to be raised
+        with pytest.raises(Exception):
+            server_proxy.push_message(mock_message)
 
         # Verify error was logged
         server_proxy.logger.error.assert_called_once()
         assert error_msg in server_proxy.logger.error.call_args[0][0]
+
+    def test_push_message_with_response(self, server_proxy):
+        """Test adding a message to the queue with response future."""
+        # Create a mock message
+        mock_message = MagicMock()
+        mock_message.msg_id = "test-message-id"
+
+        # Mock the queue's push_message method and the event
+        server_proxy._queue.push_message = MagicMock()
+        server_proxy._new_send_message.set = MagicMock()
+
+        # Call push_message_with_response
+        future = server_proxy.push_message_with_response(mock_message)
+
+        # Verify that the message was added to the queue
+        server_proxy._queue.push_message.assert_called_once_with(mock_message)
+
+        # Verify that the event was set
+        server_proxy._new_send_message.set.assert_called_once()
+
+        # Verify that a future was created and stored
+        assert mock_message.msg_id in server_proxy._response_futures
+        assert server_proxy._response_futures[mock_message.msg_id] == future
+        assert not future.done()
+
+    def test_push_message_with_response_exception(self, server_proxy):
+        """Test handling exceptions when adding a message with response to the queue."""
+        # Create a mock message
+        mock_message = MagicMock()
+        mock_message.msg_id = "test-message-id"
+
+        # Make queue.push_message raise an exception
+        error_msg = "Test error"
+        server_proxy._queue.push_message = MagicMock(side_effect=Exception(error_msg))
+
+        # Call push_message_with_response and expect exception
+        with pytest.raises(Exception):
+            server_proxy.push_message_with_response(mock_message)
+
+        # Verify error was logged
+        server_proxy.logger.error.assert_called_once()
+        assert error_msg in server_proxy.logger.error.call_args[0][0]
+
+        # Verify the future was removed from _response_futures
+        assert mock_message.msg_id not in server_proxy._response_futures
 
     def test_report_status_success(self, server_proxy):
         """Test _report_status when the request is successful."""
@@ -343,6 +390,89 @@ class TestServerProxy:
 
         # Run the test
         test_error_handling()
+
+    def test_handle_response_future(self, server_proxy):
+        """Test handling response futures."""
+        # Create a mock message and response
+        mock_message = MagicMock()
+        mock_message.msg_id = "test-message-id"
+
+        mock_response = MagicMock()
+        mock_response.json.return_value = {"result": "success"}
+
+        # Create a future and store it
+        future = Future()
+        with server_proxy._response_lock:
+            server_proxy._response_futures[mock_message.msg_id] = future
+
+        # Call _handle_response_future
+        server_proxy._handle_response_future(mock_message, mock_response)
+
+        # Verify future has been completed with the response
+        assert future.done()
+        assert future.result() == {"result": "success"}
+
+        # Verify the future was removed from _response_futures
+        assert mock_message.msg_id not in server_proxy._response_futures
+
+    def test_handle_response_future_exception(self, server_proxy):
+        """Test handling response futures when an exception occurs."""
+        # Create a mock message and response that raises exception
+        mock_message = MagicMock()
+        mock_message.msg_id = "test-message-id"
+
+        mock_response = MagicMock()
+        error_msg = "JSON decode error"
+        mock_response.json.side_effect = ValueError(error_msg)
+
+        # Create a future and store it
+        future = Future()
+        with server_proxy._response_lock:
+            server_proxy._response_futures[mock_message.msg_id] = future
+
+        # Call _handle_response_future
+        server_proxy._handle_response_future(mock_message, mock_response)
+
+        # Verify future has been completed with exception
+        assert future.done()
+        with pytest.raises(ValueError) as exc_info:
+            future.result()
+        assert error_msg in str(exc_info.value)
+
+        # Verify the future was removed from _response_futures
+        assert mock_message.msg_id not in server_proxy._response_futures
+
+    def test_send_message_with_future(self, server_proxy):
+        """Test sending a message and handling its future."""
+        # Create a mock message
+        message = Message.json_message(
+            api_path="https://api.example.com/test",
+            method=HttpMethod.POST,
+            json_data={"key": "value"}
+        )
+
+        # Create a future for this message
+        future = Future()
+        with server_proxy._response_lock:
+            server_proxy._response_futures[message.msg_id] = future
+
+        # Mock the requests library
+        mock_response = MagicMock()
+        mock_response.json.return_value = {"result": "success"}
+
+        with patch('requests.post', return_value=mock_response) as mock_post:
+            # Call the method
+            result = server_proxy._send_message(message)
+
+            # Verify the request was made correctly
+            mock_post.assert_called_once()
+
+            # Verify the result
+            assert result == {"result": "success"}
+
+            # Verify the future was completed
+            assert future.done()
+            assert future.result() == {"result": "success"}
 
     def test_raise_connection_success(self, server_proxy):
         """Test _raise_connection when the connection is successful."""
