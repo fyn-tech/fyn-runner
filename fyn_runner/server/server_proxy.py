@@ -14,6 +14,7 @@
 import atexit
 import threading
 import time
+from concurrent.futures import Future
 from urllib.parse import urljoin
 
 import requests
@@ -23,7 +24,10 @@ from fyn_runner.server.message_queue import MessageQueue
 
 
 class ServerProxy:
-    """todo"""
+    """todo
+
+    TODO: Package locks and data into a generalised class.
+    """
 
     def __init__(self, logger, file_manager, configuration):
         """todo"""
@@ -39,12 +43,14 @@ class ServerProxy:
         self.api_url = str(configuration.api_url).rstrip('/')
         self.report_interval = configuration.report_interval
 
-        # message _handing
+        # message handing
         self._running: bool = True
         self._queue: MessageQueue = MessageQueue()
         self._new_send_message: threading.Event = threading.Event()
         self._send_thread: threading.Thread = threading.Thread(target=self._send_handler)
         self._send_thread.daemon = True
+        self._response_futures = {}
+        self._response_lock = threading.RLock()
 
         # initialisation procedure
         self._fetch_api()
@@ -61,6 +67,9 @@ class ServerProxy:
 
         Returns:
             None
+
+        Raises:
+            Exception: If the message couldn't be added to the queue.
         """
         try:
             self.logger.debug(f"Pushing message {message.msg_id}")
@@ -68,6 +77,33 @@ class ServerProxy:
             self._new_send_message.set()
         except Exception as e:
             self.logger.error(f"Failed to push message ({message.msg_id}): {e}")
+            raise  # ensures caller knows
+
+    def push_message_with_response(self, message):
+        """
+        Add a message to the outgoing queue and return a Future for the response.
+
+        Args:
+            message (Message): The message to be sent
+
+        Returns:
+            Future: A Future that will contain the server response
+
+        Raises:
+            Exception: If the message couldn't be added to the queue or the event couldn't be set.
+        """
+
+        new_future = Future()
+        with self._response_lock:
+            self._response_futures[message.msg_id] = new_future
+
+        try:
+            self.push_message(message)
+            return new_future
+        except Exception:  # logger would have reported error, just clean future.
+            with self._response_lock:
+                self._response_futures.pop(message.msg_id)
+            raise  # ensures caller knows
 
     def register_observer(self, name, call_back):
         """todo"""
@@ -209,8 +245,7 @@ class ServerProxy:
             kwargs["json"] = message.json_data
 
         response: requests.Response = None
-        self.logger.debug(f"Sending message '{message.msg_id}',  {kwargs}")
-
+        self.logger.debug(f"Sending message {message.msg_id},  {kwargs}")
         match message.method:
             case HttpMethod.GET:
                 response = requests.get(**kwargs)
@@ -227,9 +262,23 @@ class ServerProxy:
 
         response.raise_for_status()
         result = response.json()
-        self.logger.info(f"Request successful for message ({message.msg_id}): "
+        self.logger.info(f"HTTP request successful for message ({message.msg_id}): "
                          f"{message.method.name} {message.api_path}")
+
+        self._handle_response_future(message, response)
+
         return result
+
+    def _handle_response_future(self, message, response):
+
+        with self._response_lock:
+            future = self._response_futures.pop(message.msg_id, None)
+            if future:
+                self.logger.debug(f"Updating future for message {message.msg_id}")
+                try:
+                    future.set_result(response.json())
+                except Exception as e:
+                    future.set_exception(e)
 
     def _listen_api(self):
         """todo"""
