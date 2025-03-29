@@ -26,6 +26,7 @@ This document outlines the testing approach for the Fyn-Runner project. It provi
 - Organize test methods to flow from basic to more complex scenarios
 
 ```python
+# e.g.
 class TestServerProxy:
     """Test suite for ServerProxy utility."""
 
@@ -34,7 +35,7 @@ class TestServerProxy:
 
 ## Fixtures
 
-- Use pytest fixtures for test setup and resource management
+- Use `pytest` fixtures for test setup and resource management
 - Name fixtures to clearly indicate what they provide
 - Use docstrings to explain what the fixture does
 - Use `yield` pattern for cleanup when working with resources

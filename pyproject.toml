@@ -30,5 +30,6 @@ disable = [
     "broad-exception-caught",
     "logging-fstring-interpolation",
     "too-many-arguments",
-    "too-many-positional-arguments"
+    "too-many-positional-arguments",
+    "too-many-instance-attributes"
 ]
