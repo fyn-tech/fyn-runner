@@ -68,7 +68,7 @@ class Message(BaseModel):
         if header:
             if ("Content-Type" in header.keys() and header["Content-Type"] != "application/json"):
                 raise RuntimeError("Attempting to specify 'Content-Type', other than "
-                                   f"application/json: {header["Content-Type"]}")
+                                   f"application/json: {header['Content-Type']}")
             message_headers.update(header)
 
         return cls(
