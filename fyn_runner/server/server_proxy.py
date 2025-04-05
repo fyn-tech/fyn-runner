@@ -43,6 +43,7 @@ class ServerProxy:
         self.id = configuration.id
         self.token = configuration.token
         self.api_url = str(configuration.api_url).rstrip('/')
+        self.api_port = configuration.api_port
         self.report_interval = configuration.report_interval
 
         # HTTP message handing and related
@@ -177,7 +178,7 @@ class ServerProxy:
 
         try:
             self._send_message(Message.json_message(
-                f"{self.api_url}/runner_manager/report_status/",
+                f"{self.api_url}:{self.api_port}/runner_manager/report_status/",
                 HttpMethod.PATCH,
                 {"state": str(status)},
             ), request_timeout=request_timeout)
@@ -321,7 +322,7 @@ class ServerProxy:
     def _ws_listen(self):
         """todo"""
 
-        ws_url = self.api_url.replace('https://', 'wss://') + f'/runner/{self.id}'
+        ws_url = self.api_url.replace('https://', 'wss://') + f'/ws/runner_manager/{self.id}'
 
         while self._running:
             try:
@@ -347,17 +348,17 @@ class ServerProxy:
     def _on_ws_message(self, _ws, message_data):
 
         message = json.loads(message_data)
-        message_type = message.get('type')
         message_id = message.get('id')
-
-        if not message_type:
-            self.logger.warning(f"Received message without type: {message}")
-            self._ws_error_response(message_id,
-                                    "Websocket messages must contain a 'type' field.")
-            return
+        message_type = message.get('type')
 
         if not message_id:
             self.logger.error(f"Received message with no id: {message}")
+            return
+
+        if not message_type:
+            self.logger.error(f"Received message {message_id} without type.")
+            self._ws_error_response(message_id,
+                                    "Websocket messages must contain a 'type' field.")
             return
 
         self.logger.debug(f"Received WebSocket message ({message_id}) {message_type}")

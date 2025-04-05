@@ -38,14 +38,19 @@ def main():
     args = parser.parse_args()
 
     # Boot-up of runner
+    logger = None
     try:
         config = ConfigManager(args.config, RunnerConfig)
         config.load()
         file_manager = FileManager(config.file_manager.working_directory)
         logger = create_logger(file_manager.log_dir, config.logging.level, config.logging.develop)
+        config.attach_logger(logger)
         ServerProxy(logger, file_manager, config.server_proxy)
     except Exception as e:
-        logger.critical(f"Fatal error encounter on startup: {e}")
+        if logger:
+            logger.critical(f"Fatal error encounter on startup: {e}")
+        else:
+            print(f"Critical error, before logger start: {e}")
 
 
 if __name__ == "__main__":
