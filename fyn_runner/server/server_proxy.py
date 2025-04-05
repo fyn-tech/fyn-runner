@@ -322,9 +322,9 @@ class ServerProxy:
     def _ws_listen(self):
         """todo"""
 
-        ws_url = self.api_url.replace('http://',
-                                      'ws://').replace('https://',
-                                                       'wss://') + f'/ws/runner_manager/{self.id}'
+        ws_url = self.api_url.replace('http://', 'ws://').replace('https://', 'wss://') \
+            + f":{self.api_port}" \
+            + f'/ws/runner_manager/{self.id}'
         self.logger.debug(f"Starting WebSocket on {ws_url}")
 
         while self._running:
@@ -332,7 +332,7 @@ class ServerProxy:
                 # Connect and listen for messages
                 self._ws = WebSocketApp(
                     ws_url,
-                    header={'Authorization': f'Bearer {self.token}'},
+                    header={'token': f'{self.token}'},
                     on_message=self._on_ws_message,
                     on_open=self._on_ws_open,
                     on_close=self._on_ws_close,
