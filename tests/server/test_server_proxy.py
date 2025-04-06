@@ -14,6 +14,7 @@
 # pylint: disable=protected-access,pointless-statement,unspecified-encoding
 
 import atexit
+import json
 import threading
 import time
 from concurrent.futures import Future
@@ -557,3 +558,288 @@ class TestServerProxy:
 
             # Verify logging
             server_proxy.logger.info.assert_called_once()
+
+    def test_handle_ws_message_valid(self, server_proxy):
+        """Test handling a valid WebSocket message."""
+        # Set up the WebSocket connection state
+        server_proxy._ws = MagicMock()
+        server_proxy._ws_connected = True
+
+        # Create a mock message
+        message_data = json.dumps({
+            "id": "msg-123",
+            "type": "test_message",
+            "data": {"key": "value"}
+        })
+
+        # Create a mock observer callback that returns a response
+        mock_callback = MagicMock(return_value={"status": "processed"})
+
+        # Add the observer to the observers dictionary
+        server_proxy._observers = {}  # Reset observers
+        with server_proxy._observers_lock:
+            server_proxy._observers["test_message"] = mock_callback
+
+        # Call the method
+        server_proxy._handle_ws_message(server_proxy._ws, message_data)
+
+        # Verify callback was called with the message
+        mock_callback.assert_called_once()
+        call_arg = mock_callback.call_args[0][0]
+        assert call_arg['id'] == "msg-123"
+        assert call_arg['type'] == "test_message"
+
+        # Verify response was sent
+        server_proxy._ws.send.assert_called_once()
+        sent_response = json.loads(server_proxy._ws.send.call_args[0][0])
+        assert sent_response["response_to"] == "msg-123"
+        assert sent_response["status"] == "processed"
+
+    def test_handle_ws_message_no_id(self, server_proxy):
+        """Test handling a WebSocket message without an ID."""
+        # Set up the WebSocket connection state
+        server_proxy._ws = MagicMock()
+        server_proxy._ws_connected = True
+
+        # Create a message without an ID
+        message_data = json.dumps({
+            "type": "test_message",
+            "data": {"key": "value"}
+        })
+
+        # Call the method
+        server_proxy._handle_ws_message(server_proxy._ws, message_data)
+
+        # Verify error was logged
+        server_proxy.logger.error.assert_called_once()
+        assert "no id" in server_proxy.logger.error.call_args[0][0].lower()
+
+        # Verify no response was sent
+        server_proxy._ws.send.assert_not_called()
+
+    def test_handle_ws_message_no_type(self, server_proxy):
+        """Test handling a WebSocket message without a type."""
+        # Set up the WebSocket connection state
+        server_proxy._ws = MagicMock()
+        server_proxy._ws_connected = True
+
+        # Create a message without a type
+        message_data = json.dumps({
+            "id": "msg-123",
+            "data": {"key": "value"}
+        })
+
+        # Call the method
+        server_proxy._handle_ws_message(server_proxy._ws, message_data)
+
+        # Verify error was logged
+        server_proxy.logger.error.assert_called_once()
+        assert "without type" in server_proxy.logger.error.call_args[0][0].lower()
+
+        # Verify error response was sent
+        server_proxy._ws.send.assert_called_once()
+        sent_response = json.loads(server_proxy._ws.send.call_args[0][0])
+        assert sent_response["type"] == "error"
+        assert sent_response["response_to"] == "msg-123"
+        assert "type" in sent_response["data"].lower()
+
+    def test_handle_ws_message_unknown_type(self, server_proxy):
+        """Test handling a WebSocket message with an unknown type."""
+        # Set up the WebSocket connection state
+        server_proxy._ws = MagicMock()
+        server_proxy._ws_connected = True
+
+        # Create a message with an unknown type
+        message_data = json.dumps({
+            "id": "msg-123",
+            "type": "unknown_type",
+            "data": {"key": "value"}
+        })
+
+        # Ensure no observers are registered
+        server_proxy._observers = {}
+        server_proxy._handle_ws_message(server_proxy._ws, message_data)
+
+        # Verify error was logged
+        server_proxy.logger.error.assert_called_once()
+        assert "unknown message type" in server_proxy.logger.error.call_args[0][0].lower()
+
+        # Verify error response was sent
+        server_proxy._ws.send.assert_called_once()
+        sent_response = json.loads(server_proxy._ws.send.call_args[0][0])
+        assert sent_response["type"] == "error"
+        assert sent_response["response_to"] == "msg-123"
+        assert "unknown" in sent_response["data"].lower()
+
+    def test_handle_ws_message_callback_exception(self, server_proxy):
+        """Test handling a WebSocket message when the callback raises an exception."""
+        # Set up the WebSocket connection state
+        server_proxy._ws = MagicMock()
+        server_proxy._ws_connected = True
+
+        # Create a mock message
+        message_data = json.dumps({
+            "id": "msg-123",
+            "type": "test_message",
+            "data": {"key": "value"}
+        })
+
+        # Create a mock observer callback that raises an exception
+        error_msg = "Test callback error"
+        mock_callback = MagicMock(side_effect=Exception(error_msg))
+
+        # Add the observer to the observers dictionary
+        server_proxy._observers = {}  # Reset observers
+        with server_proxy._observers_lock:
+            server_proxy._observers["test_message"] = mock_callback
+
+        # Call the method
+        server_proxy._handle_ws_message(server_proxy._ws, message_data)
+
+        # Verify callback was called
+        mock_callback.assert_called_once()
+
+        # Verify error was logged
+        server_proxy.logger.error.assert_called_once()
+        assert error_msg in server_proxy.logger.error.call_args[0][0]
+
+        # Verify error response was sent
+        server_proxy._ws.send.assert_called_once()
+        sent_response = json.loads(server_proxy._ws.send.call_args[0][0])
+        assert sent_response["type"] == "error"
+        assert sent_response["response_to"] == "msg-123"
+        assert error_msg in sent_response["data"]
+
+    def test_handle_ws_message_callback_no_response(self, server_proxy):
+        """Test handling a WebSocket message when the callback returns None."""
+        # Set up the WebSocket connection state
+        server_proxy._ws = MagicMock()
+        server_proxy._ws_connected = True
+
+        # Create a mock message
+        message_data = json.dumps({
+            "id": "msg-123",
+            "type": "test_message",
+            "data": {"key": "value"}
+        })
+
+        # Create a mock observer callback that returns None
+        mock_callback = MagicMock(return_value=None)
+
+        # Add the observer to the observers dictionary
+        server_proxy._observers = {}  # Reset observers
+        with server_proxy._observers_lock:
+            server_proxy._observers["test_message"] = mock_callback
+
+        # Call the method
+        server_proxy._handle_ws_message(server_proxy._ws, message_data)
+
+        # Verify callback was called
+        mock_callback.assert_called_once()
+
+        # Verify a default success response was sent
+        server_proxy._ws.send.assert_called_once()
+        sent_response = json.loads(server_proxy._ws.send.call_args[0][0])
+        assert sent_response["type"] == "success"
+        assert sent_response["response_to"] == "msg-123"
+
+    def test_on_ws_open(self, server_proxy):
+        """Test the WebSocket open callback."""
+        # Reset the connection state
+        server_proxy._ws_connected = False
+
+        # Call the method
+        server_proxy._on_ws_open(MagicMock())
+
+        # Verify connection status was updated
+        assert server_proxy._ws_connected is True
+
+        # Verify event was logged
+        server_proxy.logger.info.assert_called_with("WebSocket connection established")
+
+    def test_on_ws_close(self, server_proxy):
+        """Test the WebSocket close callback."""
+        # Set initial state to connected
+        server_proxy._ws_connected = True
+
+        # Call the method
+        server_proxy._on_ws_close(MagicMock(), 1000, "Normal closure")
+
+        # Verify connection status was updated
+        assert server_proxy._ws_connected is False
+
+        # Verify event was logged with status code and message
+        server_proxy.logger.info.assert_called_with(
+            "WebSocket connection closed: 1000 Normal closure"
+        )
+
+    def test_on_ws_error(self, server_proxy):
+        """Test the WebSocket error callback."""
+        # Create a mock error
+        error = Exception("Test WebSocket error")
+
+        # Reset the logger mock
+        server_proxy.logger.reset_mock()
+
+        # Call the method
+        server_proxy._on_ws_error(MagicMock(), error)
+
+        # Verify error was logged
+        server_proxy.logger.error.assert_called_with("WebSocket error: Test WebSocket error")
+
+    def test_ws_error_response_connected(self, server_proxy):
+        """Test sending a WebSocket error response when connected."""
+        # Set up the WebSocket connection state
+        server_proxy._ws = MagicMock()
+        server_proxy._ws_connected = True
+
+        # Call the method
+        server_proxy._ws_error_response("msg-123", "Test error message")
+
+        # Verify the error response was sent
+        server_proxy._ws.send.assert_called_once()
+        sent_response = json.loads(server_proxy._ws.send.call_args[0][0])
+        assert sent_response["type"] == "error"
+        assert sent_response["response_to"] == "msg-123"
+        assert sent_response["data"] == "Test error message"
+
+        # Verify debug message was logged
+        server_proxy.logger.debug.assert_called()
+        assert "Sent error response" in server_proxy.logger.debug.call_args[0][0]
+
+    def test_ws_error_response_disconnected(self, server_proxy):
+        """Test sending a WebSocket error response when disconnected."""
+        # Set up the WebSocket instance but disconnected state
+        server_proxy._ws = MagicMock()
+        server_proxy._ws_connected = False
+
+        # Call the method
+        server_proxy._ws_error_response("msg-123", "Test error message")
+
+        # Verify no message was sent
+        server_proxy._ws.send.assert_not_called()
+
+        # Verify error was logged
+        server_proxy.logger.error.assert_called_with(
+            "Cannot send error response: WebSocket not connected"
+        )
+
+    def test_ws_error_response_send_exception(self, server_proxy):
+        """Test handling an exception when sending a WebSocket error response."""
+        # Set up the WebSocket connection state with an error on send
+        server_proxy._ws = MagicMock()
+        server_proxy._ws_connected = True
+        error_msg = "Send failed"
+        server_proxy._ws.send.side_effect = Exception(error_msg)
+
+        # Call the method
+        server_proxy._ws_error_response("msg-123", "Test error message")
+
+        # Verify send was called
+        server_proxy._ws.send.assert_called_once()
+
+        # Verify error was logged
+        server_proxy.logger.error.assert_called_once()
+        log_message = server_proxy.logger.error.call_args[0][0]
+        assert "Failed to send error response" in log_message
+        assert error_msg in log_message
