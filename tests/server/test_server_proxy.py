@@ -54,7 +54,7 @@ class TestServerProxy:
         # Create thread mocks that track when daemon is set
         thread_instances = []
 
-        def create_thread_mock():
+        def create_thread_mock(**_kwargs):
             mock_thread = MagicMock()
             thread_instances.append(mock_thread)
             return mock_thread

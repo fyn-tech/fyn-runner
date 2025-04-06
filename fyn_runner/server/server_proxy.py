@@ -334,7 +334,17 @@ class ServerProxy:
                     future.set_exception(e)
 
     def _receive_handler(self):
-        """todo"""
+        """
+        Background thread handler that manages WebSocket connection to the backend server.
+
+        This method runs in a separate daemon thread and is responsible for:
+        1. Establishing and maintaining the WebSocket connection
+        2. Reconnecting if the connection is lost
+        3. Handles any WebSocket errors
+
+        The thread continues retrying the connection until self._running is set to False.
+        """
+
         ws_url = self.api_url.replace('http://', 'ws://').replace('https://', 'wss://') \
             + f":{self.api_port}/ws/runner_manager/{self.id}"
         self.logger.debug(f"Starting WebSocket on {ws_url}")
@@ -360,6 +370,16 @@ class ServerProxy:
                 time.sleep(5)
 
     def _handle_ws_message(self, _ws, message_data):
+        """
+        Process incoming WebSocket messages from the server.
+
+        This callback is invoked when a message is received over the WebSocket connection.
+        It parses the message, identifies its type, and routes it to the appropriate observer.
+
+        Args:
+            _ws (WebSocketApp): The WebSocket instance that received the message
+            message_data (str): The raw message string received from the server
+        """
 
         message = json.loads(message_data)
         message_id = message.get('id')
@@ -405,17 +425,54 @@ class ServerProxy:
             self._ws_error_response(message_id, error_msg)
 
     def _on_ws_open(self, _ws):
+        """
+        Callback invoked when the WebSocket connection is established.
+
+        Args:
+            _ws (WebSocketApp): The WebSocket instance that was opened
+        """
         self.logger.info("WebSocket connection established")
         self._ws_connected = True
 
     def _on_ws_close(self, _ws, close_status_code, close_msg):
+        """
+        Callback invoked when the WebSocket connection is closed.
+
+        Args:
+            _ws (WebSocketApp): The WebSocket instance that was closed
+            close_status_code (int): The status code indicating why the connection was closed
+            close_msg (str): The message associated with the close status
+        """
         self.logger.info(f"WebSocket connection closed: {close_status_code} {close_msg}")
         self._ws_connected = False
 
     def _on_ws_error(self, _ws, error):
+        """
+        Callback invoked when a WebSocket error occurs.
+
+        Args:
+            _ws (WebSocketApp): The WebSocket instance that encountered an error
+            error (Exception): The error that occurred
+        """
         self.logger.error(f"WebSocket error: {error}")
 
     def _ws_error_response(self, message_id, data):
+        """
+        Send an error response back to the server via the WebSocket connection.
+
+        This method constructs and sends a standardized error response message.
+
+        Args:
+            message_id (str): The ID of the message being responded to
+            data (str): The error message or details to include in the response
+
+        Returns:
+            None
+
+        Raises:
+            Exception: If sending the error response fails
+        """
+
         if self._ws and self._ws_connected:  # Check connection state
             error_response = {
                 "type": "error",
