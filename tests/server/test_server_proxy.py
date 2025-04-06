@@ -44,21 +44,29 @@ class TestServerProxy:
         config_mock.id = "test-123"
         config_mock.token = "test-token"
         config_mock.api_url = "https://api.example.com"
+        config_mock.api_port = 8000
         config_mock.report_interval = 60
 
         # Save original register function and threading class
         original_register = atexit.register
         original_thread = threading.Thread
 
-        # Create mocks
-        thread_mock = MagicMock()
+        # Create thread mocks that track when daemon is set
+        thread_instances = []
+
+        def create_thread_mock():
+            mock_thread = MagicMock()
+            thread_instances.append(mock_thread)
+            return mock_thread
+
+        thread_mock = MagicMock(side_effect=create_thread_mock)
         register_mock = MagicMock()
         fetch_api_mock = MagicMock()
         raise_connection_mock = MagicMock()
 
         # Temporarily replace atexit.register and threading.Thread
         atexit.register = register_mock
-        threading.Thread = MagicMock(return_value=thread_mock)
+        threading.Thread = thread_mock
 
         # Create the ServerProxy with patched methods
         with patch.object(ServerProxy, '_fetch_api', fetch_api_mock), \
@@ -66,7 +74,8 @@ class TestServerProxy:
             proxy = ServerProxy(logger_mock, file_manager_mock, config_mock)
 
         # Store mocks for later assertions
-        proxy._thread_mock = threading.Thread
+        proxy._thread_mock = thread_mock
+        proxy._thread_instances = thread_instances  # Store the thread instances
         proxy._fetch_api_mock = fetch_api_mock
         proxy._raise_connection_mock = raise_connection_mock
         proxy._atexit_register_mock = register_mock
@@ -86,17 +95,23 @@ class TestServerProxy:
 
         # Check that thread is created (mocked) - using our stored mock
         thread_mock = server_proxy._thread_mock
-        assert thread_mock.call_count > 0
-        thread_kwargs = thread_mock.call_args[1]
-        assert thread_kwargs["target"] == server_proxy._send_handler
-        # The daemon parameter might be named differently in your implementation
-        if "daemon" in thread_kwargs:
-            assert thread_kwargs["daemon"] is True
-        else:
-            # Just verify the thread is created with the right target
-            print(f"Thread initialization arguments: {thread_kwargs}")
+        assert thread_mock.call_count >= 2
 
-        # Check that startup methods were called
+        # Check thread targets set
+        thread_calls = thread_mock.call_args_list
+        thread_targets = [call[1]["target"] for call in thread_calls if "target" in call[1]]
+        assert server_proxy._send_handler in thread_targets
+        assert server_proxy._receive_handler in thread_targets
+
+        # Check that the daemon property was set on at least one thread instance
+        daemon_values = [getattr(instance, 'daemon', None)
+                         for instance in server_proxy._thread_instances]
+        assert True in daemon_values, "No thread had daemon=True set"
+
+        assert server_proxy._ws is None
+        assert server_proxy._ws_connected is False
+        assert server_proxy._running is True
+
         assert server_proxy._fetch_api_mock.call_count > 0
         assert server_proxy._raise_connection_mock.call_count > 0
         assert server_proxy._atexit_register_mock.call_count > 0
@@ -222,7 +237,8 @@ class TestServerProxy:
 
     def test_deregister_nonexistent_observer(self, server_proxy):
         """Test that deregistering a non-existent observer raises an exception."""
-        with pytest.raises(RuntimeError, match="Trying to remove non-existant observer test_message"):
+        with pytest.raises(RuntimeError,
+                           match="Trying to remove non-existant observer test_message"):
             server_proxy.deregister_observer("test_message")
 
     def test_report_status_success(self, server_proxy):
@@ -239,12 +255,8 @@ class TestServerProxy:
             message_arg = mock_send.call_args[0][0]
             assert message_arg.method == HttpMethod.PATCH
             assert message_arg.json_data == {"state": "idle"}
-            assert "https://api.example.com/runner_manager/report_status/" in str(
+            assert "https://api.example.com:8000/runner_manager/report_status/" in str(
                 message_arg.api_path)
-
-            # The _report_status method doesn't return anything in the current implementation
-            # so we won't assert a return value
-            # assert result == expected_result
 
     def test_report_status_connection_error(self, server_proxy):
         """Test _report_status when a connection error occurs."""

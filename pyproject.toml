@@ -33,5 +33,6 @@ disable = [
     "logging-fstring-interpolation",
     "too-many-arguments",
     "too-many-positional-arguments",
-    "too-many-instance-attributes"
+    "too-many-instance-attributes",
+    "too-many-public-methods"
 ]
