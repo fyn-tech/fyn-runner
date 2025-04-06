@@ -206,7 +206,7 @@ class ServerProxy:
         self._report_status('idle')
 
     def _fetch_api(self):
-        """todo"""
+        """TODO"""
         self.logger.info("fetching backend API... STILL TO DO")
 
     def _send_handler(self):
