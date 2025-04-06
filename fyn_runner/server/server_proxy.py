@@ -46,8 +46,10 @@ class ServerProxy:
         self.api_port = configuration.api_port
         self.report_interval = configuration.report_interval
 
-        # HTTP message handing and related
+        # Proxy Status
         self._running: bool = True
+
+        # HTTP message handing and related
         self._queue: MessageQueue = MessageQueue()
         self._new_send_message: threading.Event = threading.Event()
         self._send_thread: threading.Thread = threading.Thread(target=self._send_handler)
@@ -60,7 +62,7 @@ class ServerProxy:
         self._observers_lock = threading.RLock()
         self._ws: WebSocketApp = None  # only the _ws_thread should access
         self._ws_connected: bool = False
-        self._ws_thread: threading.Thread = threading.Thread(target=self._ws_listen)
+        self._ws_thread: threading.Thread = threading.Thread(target=self._receive_handler)
         self._ws_thread.daemon = True
 
         # initialisation procedure
@@ -205,7 +207,7 @@ class ServerProxy:
 
     def _fetch_api(self):
         """todo"""
-        self.logger.info("fetching backend API.")
+        self.logger.info("fetching backend API... STILL TO DO")
 
     def _send_handler(self):
         """
@@ -309,6 +311,16 @@ class ServerProxy:
         return result
 
     def _handle_response_future(self, message, response):
+        """
+        Handles the response from the backend to the future result.
+
+        Args:
+            message(Message): The message store the result
+            response(Response): The repose from the backend server.
+
+        Raises:
+            Exception: For any issue in trying to decode or set the server response.
+        """
 
         with self._response_futures_lock:
             future = self._response_futures.pop(message.msg_id, None)
@@ -317,23 +329,22 @@ class ServerProxy:
                 try:
                     future.set_result(response.json())
                 except Exception as e:
+                    self.logger.error("Error setting future result for message "
+                                      f"{message.msg_id}: {e}")
                     future.set_exception(e)
 
-    def _ws_listen(self):
+    def _receive_handler(self):
         """todo"""
-
         ws_url = self.api_url.replace('http://', 'ws://').replace('https://', 'wss://') \
-            + f":{self.api_port}" \
-            + f'/ws/runner_manager/{self.id}'
+            + f":{self.api_port}/ws/runner_manager/{self.id}"
         self.logger.debug(f"Starting WebSocket on {ws_url}")
 
         while self._running:
             try:
-                # Connect and listen for messages
                 self._ws = WebSocketApp(
                     ws_url,
                     header={'token': f'{self.token}'},
-                    on_message=self._on_ws_message,
+                    on_message=self._handle_ws_message,
                     on_open=self._on_ws_open,
                     on_close=self._on_ws_close,
                     on_error=self._on_ws_error
@@ -348,7 +359,7 @@ class ServerProxy:
                 self.logger.error(f"WebSocket error: {e}")
                 time.sleep(5)
 
-    def _on_ws_message(self, _ws, message_data):
+    def _handle_ws_message(self, _ws, message_data):
 
         message = json.loads(message_data)
         message_id = message.get('id')
@@ -413,6 +424,7 @@ class ServerProxy:
             }
             try:
                 self._ws.send(json.dumps(error_response))
+                self.logger.debug(f"Sent error response: {error_response}")
             except Exception as e:
                 self.logger.error(f"Failed to send error response: {e}")
         else:
