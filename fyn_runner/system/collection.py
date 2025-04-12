@@ -37,8 +37,8 @@ def collect_system_info(logger, file_manager, server_proxy):
 
         server_proxy.push_message(
             Message.json_message(api_path=f"{server_proxy.api_url}:{server_proxy.api_port}/"
-                                 f"update_system/{server_proxy.id}", method=HttpMethod.PUT,
-                                 json_data=current_hw_data, header=None, priority=0, params=None)
+                                 f"runner_manager/update_system/{server_proxy.id}",
+                                 method=HttpMethod.PUT, json_data=current_hw_data)
         )
     else:
         logger.debug("No change to system info")

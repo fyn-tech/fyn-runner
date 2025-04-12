@@ -16,6 +16,7 @@ import json
 import threading
 import time
 from concurrent.futures import Future
+from urllib.error import HTTPError
 from urllib.parse import urljoin
 
 import requests
@@ -301,10 +302,17 @@ class ServerProxy:
             case _:
                 raise ValueError(f"Unsupported HTTP method: {message.method.name}")
 
-        response.raise_for_status()
-        result = response.json()
-        self.logger.info(f"HTTP request successful for message ({message.msg_id}): "
-                         f"{message.method.name} {message.api_path}")
+        try:
+            response.raise_for_status()
+            result = response.json()
+            self._handle_response_future(message, response)
+            self.logger.info(f"HTTP request successful for message ({message.msg_id}): "
+                             f"{message.method.name} {message.api_path}")
+        except requests.exceptions.HTTPError:
+            result = response.json()
+            self.logger.error(f"HTTP request error for message ({message.msg_id}): "
+                              f"status_code: {response.status_code}, "
+                              f"server message: {result["message"]}")
 
         self._handle_response_future(message, response)
 
@@ -377,8 +385,8 @@ class ServerProxy:
         It parses the message, identifies its type, and routes it to the appropriate observer.
 
         Args:
-            _ws (WebSocketApp): The WebSocket instance that received the message
-            message_data (str): The raw message string received from the server
+            _ws(WebSocketApp): The WebSocket instance that received the message
+            message_data(str): The raw message string received from the server
         """
 
         message = json.loads(message_data)
@@ -429,7 +437,7 @@ class ServerProxy:
         Callback invoked when the WebSocket connection is established.
 
         Args:
-            _ws (WebSocketApp): The WebSocket instance that was opened
+            _ws(WebSocketApp): The WebSocket instance that was opened
         """
         self.logger.info("WebSocket connection established")
         self._ws_connected = True
@@ -439,9 +447,9 @@ class ServerProxy:
         Callback invoked when the WebSocket connection is closed.
 
         Args:
-            _ws (WebSocketApp): The WebSocket instance that was closed
-            close_status_code (int): The status code indicating why the connection was closed
-            close_msg (str): The message associated with the close status
+            _ws(WebSocketApp): The WebSocket instance that was closed
+            close_status_code(int): The status code indicating why the connection was closed
+            close_msg(str): The message associated with the close status
         """
         self.logger.info(f"WebSocket connection closed: {close_status_code} {close_msg}")
         self._ws_connected = False
@@ -451,8 +459,8 @@ class ServerProxy:
         Callback invoked when a WebSocket error occurs.
 
         Args:
-            _ws (WebSocketApp): The WebSocket instance that encountered an error
-            error (Exception): The error that occurred
+            _ws(WebSocketApp): The WebSocket instance that encountered an error
+            error(Exception): The error that occurred
         """
         self.logger.error(f"WebSocket error: {error}")
 
@@ -463,8 +471,8 @@ class ServerProxy:
         This method constructs and sends a standardized error response message.
 
         Args:
-            message_id (str): The ID of the message being responded to
-            data (str): The error message or details to include in the response
+            message_id(str): The ID of the message being responded to
+            data(str): The error message or details to include in the response
 
         Returns:
             None
