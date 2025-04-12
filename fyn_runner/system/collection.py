@@ -12,13 +12,15 @@
 #  see <https://www.gnu.org/licenses/>.
 
 import json
+import platform
 
 import psutil
+from cpuinfo import get_cpu_info
 
 from fyn_runner.server.message import HttpMethod, Message
 
 
-def check_hardware(logger, file_manager, server_proxy):
+def collect_system_info(logger, file_manager, server_proxy):
 
     logger.info("Checking system hardware")
     hw_file = file_manager.cache_dir / 'hardware_data.json'
@@ -55,3 +57,59 @@ def _get_memory_info():
     return {
         "total_gb": ram_info.total
     }
+
+
+def _get_os_info():
+    return {
+        'system_name': platform.system_name,
+        'system_release': platform.system_release,
+        'system_version': platform.system_version,
+        'system_architecture': platform.system_architecture,
+    }
+
+
+def _get_cpu_data():
+    cpu_info = get_cpu_info()
+    return {
+        'cpu_model': cpu_info.brand_raw,
+        'cpu_clock_speed': cpu_info.hz_advertised_raw,
+        'cpu_logical_cores': psutil.cpu_count(),
+        'cpu_physical_cores': psutil.cpu_count(logical=False),
+        'cpu_cache_l1_size': cpu_info.l1_data_cache_size,
+        'cpu_cache_l2_size': cpu_info.l2_cache_size,
+        'cpu_cache_l3_size': cpu_info.l3_cache_size,
+    }
+
+
+def _get_ram_data():
+    return {'ram_size_total': psutil.virtual_memory().total}
+
+
+def _get_disk_data(file_manager, logger):
+    sim_path = file_manager.simulation_dir
+
+    try:
+        usage = psutil.disk_usage(str(sim_path))
+        return {
+            "disk_size_total": usage.total,
+            "disk_size_available": usage.free
+        }
+    except Exception as e:
+        logger.error(f"Could not assess storage: {str(e)}")
+        return {
+            'disk_size_total': None,
+            'disk_size_available': None
+        }
+
+
+def _get_gpu_data():
+
+    # 'gpu_vendor': self.gpu_vendor,
+    # 'gpu_model': self.gpu_model,
+    # 'gpu_memory_size': self.gpu_memory_size,
+    # 'gpu_clock_speed': self.gpu_clock_speed,
+    # 'gpu_compute_units': self.gpu_compute_units,
+    # 'gpu_core_count': self.gpu_core_count,
+    # 'gpu_driver_version': self.gpu_driver_version
+
+    return {}

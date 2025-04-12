@@ -40,11 +40,9 @@ The above requirements will be met the use of the following components.
 - handles authentication to server
 - communication and data transfer between runner and api (and maybe front end).
 
-### Hardware Manager
+### System Integration
 - Collects system relevant specs for analysis resource availability.
 - Detects hardware changes and updates.
-
-### System Integration
 - Installation and registration of the runner.
 - Tools for the user to directly interact with the runner (cmd)
 - automatic updating?
@@ -53,17 +51,17 @@ The above requirements will be met the use of the following components.
 
 Briefly the requirements will be fulfilled by the following components.
 
-| Requirements                                                                                 | Components                                                                                                                                   |
-| -------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------- |
-| 1. Portability across OSes.                                                                  | [System Integration](#system-integration)                                                                                                    |
-| 2. Must start on start up (at least default behaviour).                                      | [System Integration](#system-integration)                                                                                                    |
-| 3. Must collect data on hardware of systems.                                                 | [Hardware Manager](#hardware-manager)                                                                                                        |
-| 4. Must communicate hardware data to Fyn-api.                                                | [Server Proxy](#server-proxy--facade---proxy),[Hardware Manager](#hardware-manager)                                                          |
-| 5. Must communicate with fyn-api regarding job status (starting, monitoring,completion, etc) | [Server Proxy](#server-proxy--facade---proxy) , [Job Manager](#job-manager-co-ordinator), [Simulation Monitor](#simulation-monitor-observer) |
-| 6. Must communicate/synchronise simulation data with fyn-api (CRUD on local data).           | [Server Proxy](#server-proxy--facade---proxy), [File manager](#file-manager)                                                                 |
-| 7. Must register with fyn-api - storing secret tokens ext.                                   | [Server Proxy](#server-proxy--facade---proxy)                                                                                                |
-| 8. Must be able to launch and kill simulations.                                              | [Job Manager](#job-manager-co-ordinator), [Simulation Monitor](#simulation-monitor-observer)                                                 |
-| 9. Must organise simulation files.                                                           | [Simulation Monitor](#simulation-monitor-observer), [Server Proxy](#server-proxy--facade---proxy), [File manager](#file-manager)             |
+| Requirements                                                                                 | Components                                                                                                                                  |
+| -------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
+| 1. Portability across OSes.                                                                  | [System Integration](#system-integration)                                                                                                   |
+| 2. Must start on start up (at least default behaviour).                                      | [System Integration](#system-integration)                                                                                                   |
+| 3. Must collect data on hardware of systems.                                                 | [System Integration](#system-integration)                                                                                                   |
+| 4. Must communicate hardware data to Fyn-api.                                                | [Server Proxy](#server-proxy--facade---proxy), [System Integration](#system-integration)                                                    |
+| 5. Must communicate with fyn-api regarding job status (starting, monitoring,completion, etc) | [Server Proxy](#server-proxy--facade---proxy), [Job Manager](#job-manager-co-ordinator), [Simulation Monitor](#simulation-monitor-observer) |
+| 6. Must communicate/synchronise simulation data with fyn-api (CRUD on local data).           | [Server Proxy](#server-proxy--facade---proxy), [File manager](#file-manager)                                                                |
+| 7. Must register with fyn-api - storing secret tokens ext.                                   | [Server Proxy](#server-proxy--facade---proxy)                                                                                               |
+| 8. Must be able to launch and kill simulations.                                              | [Job Manager](#job-manager-co-ordinator), [Simulation Monitor](#simulation-monitor-observer)                                                |
+| 9. Must organise simulation files.                                                           | [Simulation Monitor](#simulation-monitor-observer), [Server Proxy](#server-proxy--facade---proxy), [File manager](#file-manager)            |
 
 
 ## UML Structure
@@ -98,6 +96,7 @@ classDiagram
 
   %% Classes
   class JobManager {
+    %% FIXME: Hardware/system info stuff is not in the job manager.
     %% Attributes:
     List~SimulationMonitor~ simulations
     ServerProxy backend_communicator
@@ -110,7 +109,7 @@ classDiagram
     %% Startup procedures
     _load_configuration()
     _raise_server_connection()
-    _check_system_hardware()
+    _check_system_hardware() 
 
     %% Startup procedures
     _end_server_connection()
@@ -162,12 +161,6 @@ classDiagram
     RunnerConfig: config
   }
 
-  class HardwareManager {
-    <<utility>>
-    collect_system_specs()
-    detect_hardware_changes()
-  }
-
   namespace Server {
     class ServerProxy {
       %% Attributes:
@@ -210,7 +203,8 @@ classDiagram
   }
 
   class SystemIntegration {
-
+    <<utility>>
+    collect_system_info()
   }
 ```
 
