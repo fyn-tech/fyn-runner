@@ -90,7 +90,7 @@ class TestServerProxy:
     def test_initialization(self, server_proxy):
         """Test the initialization of ServerProxy."""
         # Check that essential attributes are initialized
-        assert server_proxy._running is True
+        assert server_proxy.running is True
         assert isinstance(server_proxy._queue, MessageQueue)
         assert isinstance(server_proxy._new_send_message, threading.Event)
 
@@ -109,9 +109,9 @@ class TestServerProxy:
                          for instance in server_proxy._thread_instances]
         assert True in daemon_values, "No thread had daemon=True set"
 
+        assert server_proxy.running is True
         assert server_proxy._ws is None
         assert server_proxy._ws_connected is False
-        assert server_proxy._running is True
 
         assert server_proxy._fetch_api_mock.call_count > 0
         assert server_proxy._raise_connection_mock.call_count > 0

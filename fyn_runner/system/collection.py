@@ -20,34 +20,41 @@ from cpuinfo import get_cpu_info
 from fyn_runner.server.message import HttpMethod, Message
 
 
-def collect_system_info(logger, file_manager, server_proxy):
+def report_current_system_info(logger, file_manager, server_proxy):
+    """
+    Collects system information, saves it to a cache file, and sends it to the server.
 
-    logger.info("Checking system")
+    Args:
+        logger: Logger object for recording status and debug information
+        file_manager: Manager for file operations and accessing directories
+        server_proxy: Proxy for communicating with the server
+    """
+
+    logger.info("Collecting system information.")
     hw_file = file_manager.cache_dir / 'system_data.json'
-
-    reader = open(hw_file, 'r', encoding='utf-8') if hw_file.exists() else None
-    saved_hw_data = json.load(reader) if hw_file.exists() else None
-    if reader:
-        reader.close()
     current_hw_data = _get_system_data(file_manager, logger)
-
-    if current_hw_data != saved_hw_data:
-        logger.info("System has been updated, updating server data.")
-        logger.debug(f"System data:{current_hw_data}")
-
-        server_proxy.push_message(
-            Message.json_message(api_path=f"{server_proxy.api_url}:{server_proxy.api_port}/"
-                                 f"runner_manager/update_system/{server_proxy.id}",
-                                 method=HttpMethod.PUT, json_data=current_hw_data)
-        )
-    else:
-        logger.debug("No change to system info")
-
+    logger.debug(f"System data:{current_hw_data}")
+    server_proxy.push_message(
+        Message.json_message(api_path=f"{server_proxy.api_url}:{server_proxy.api_port}/"
+                             f"runner_manager/update_system/{server_proxy.id}",
+                             method=HttpMethod.PUT, json_data=current_hw_data)
+    )
     with open(hw_file, 'w', encoding='utf-8') as writer:
         json.dump(current_hw_data, writer, ensure_ascii=False, indent=4)
 
 
 def _get_system_data(file_manager, logger):
+    """
+    Aggregates all system information by combining OS, CPU, RAM, disk, and GPU data.
+
+    Args:
+        file_manager: Manager for file operations
+        logger: Logger object for recording status
+
+    Returns:
+        dict: Combined dictionary of all system information
+    """
+
     info = _get_os_info()
     info |= _get_cpu_data()
     info |= _get_ram_data()
@@ -57,6 +64,12 @@ def _get_system_data(file_manager, logger):
 
 
 def _get_os_info():
+    """
+    Collects operating system information.
+
+    Returns:
+        dict: Dictionary containing OS name, release, version, and architecture
+    """
     return {
         'system_name': platform.system(),
         'system_release': platform.release(),
@@ -66,6 +79,12 @@ def _get_os_info():
 
 
 def _get_cpu_data():
+    """
+    Collects CPU information using cpuinfo and psutil.
+
+    Returns:
+        dict: Dictionary containing CPU model, clock speeds, core counts, and cache sizes
+    """
     cpu_info = get_cpu_info()
     return {
         'cpu_model': cpu_info['brand_raw'],
@@ -80,10 +99,26 @@ def _get_cpu_data():
 
 
 def _get_ram_data():
+    """
+    Collects system RAM information.
+
+    Returns:
+        dict: Dictionary containing total RAM size
+    """
     return {'ram_size_total': psutil.virtual_memory().total}
 
 
 def _get_disk_data(file_manager, logger):
+    """
+    Collects disk information for the simulation directory.
+
+    Args:
+        file_manager: Manager object containing simulation directory path
+        logger: Logger object for recording errors
+
+    Returns:
+        dict: Dictionary containing total and available disk size
+    """
     sim_path = file_manager.simulation_dir
 
     try:
@@ -102,7 +137,11 @@ def _get_disk_data(file_manager, logger):
 
 def _get_gpu_data():
     """
-    TODO: This is a bit involved, will do later
+    TODO:
+    Placeholder function for collecting GPU information.
+
+    Returns:
+        dict: Empty dictionary (to be implemented in the future)
     """
     # 'gpu_vendor': self.gpu_vendor,
     # 'gpu_model': self.gpu_model,

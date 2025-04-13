@@ -16,7 +16,6 @@ import json
 import threading
 import time
 from concurrent.futures import Future
-from urllib.error import HTTPError
 from urllib.parse import urljoin
 
 import requests
@@ -48,7 +47,7 @@ class ServerProxy:
         self.report_interval = configuration.report_interval
 
         # Proxy Status
-        self._running: bool = True
+        self.running: bool = True
 
         # HTTP message handing and related
         self._queue: MessageQueue = MessageQueue()
@@ -224,7 +223,7 @@ class ServerProxy:
         """
 
         next_report_time = time.time() + self.report_interval
-        while self._running:
+        while self.running:
             wait_time = max(0.0, next_report_time - time.time())
             message_added = self._new_send_message.wait(timeout=wait_time)
 
@@ -357,7 +356,7 @@ class ServerProxy:
             + f":{self.api_port}/ws/runner_manager/{self.id}"
         self.logger.debug(f"Starting WebSocket on {ws_url}")
 
-        while self._running:
+        while self.running:
             try:
                 self._ws = WebSocketApp(
                     ws_url,
@@ -370,7 +369,7 @@ class ServerProxy:
 
                 self._ws.run_forever()
 
-                if self._running:
+                if self.running:
                     self.logger.warning("WebSocket disconnected, reconnecting...")
                     time.sleep(5)
             except Exception as e:
