@@ -311,7 +311,7 @@ class ServerProxy:
             result = response.json()
             self.logger.error(f"HTTP request error for message ({message.msg_id}): "
                               f"status_code: {response.status_code}, "
-                              f"server message: {result["message"]}")
+                              f"server message: {result['message']}")
 
         self._handle_response_future(message, response)
 
