@@ -45,9 +45,9 @@ class TestLogger:
         assert len(logger.handlers) == 1
         assert isinstance(logger.handlers[0], logging.FileHandler)
 
-    def test_create_logger_dev_mode(self, temp_log_dir):
+    def test_create_logger_develop(self, temp_log_dir):
         """Test logger in dev mode with console output."""
-        logger = create_logger(temp_log_dir, dev_mode=True)
+        logger = create_logger(temp_log_dir, develop=True)
 
         assert len(logger.handlers) == 2
         assert any(isinstance(h, logging.FileHandler) for h in logger.handlers)

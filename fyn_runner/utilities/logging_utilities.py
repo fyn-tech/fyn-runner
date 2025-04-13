@@ -21,7 +21,7 @@ from pathlib import Path
 def create_logger(
         log_dir,
         level=logging.INFO,
-        dev_mode=False,
+        develop=False,
         name="fyn_runner",
         retention_days=30):
     """
@@ -34,7 +34,7 @@ def create_logger(
      Args:
          log_dir (Path): Directory where log files will be stored
          level (int): Logging level threshold (e.g., logging.INFO, logging.DEBUG)
-         dev_mode (bool): When True, logs will be output to console in addition to file
+         develop (bool): When True, logs will be output to console in addition to file
          name (str): Logger name for hierarchical logging and identification
          retention_days (int): Number of days to keep log files before deletion
 
@@ -67,7 +67,7 @@ def create_logger(
     logger.addHandler(file_handler)
 
     # Console handler for development mode
-    if dev_mode:
+    if develop:
         console_handler = logging.StreamHandler()
         console_handler.setLevel(level)
         console_handler.setFormatter(formatter)
@@ -76,7 +76,7 @@ def create_logger(
     # Log startup information
     logger.info(f"Logger initialized, logging to: {log_path.absolute()}")
     logger.info(f"Logging at {logging.getLevelName(logger.level)} level")
-    if dev_mode:
+    if develop:
         logger.info("Logging in development mode")
 
     # Clean up old logs

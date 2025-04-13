@@ -109,7 +109,7 @@ classDiagram
     %% Startup procedures
     _load_configuration()
     _raise_server_connection()
-    _check_system_hardware() 
+    _check_system_hardware()
 
     %% Startup procedures
     _end_server_connection()
