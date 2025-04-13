@@ -13,8 +13,11 @@
 
 
 import argparse
+import sys
 
 from fyn_runner.config import RunnerConfig
+from fyn_runner.server.server_proxy import ServerProxy
+from fyn_runner.system.collection import report_current_system_info
 from fyn_runner.utilities.config_manager import ConfigManager
 from fyn_runner.utilities.file_manager import FileManager
 from fyn_runner.utilities.logging_utilities import create_logger
@@ -37,13 +40,27 @@ def main():
     args = parser.parse_args()
 
     # Boot-up of runner
+    logger = None
+    proxy = None
     try:
         config = ConfigManager(args.config, RunnerConfig)
         config.load()
         file_manager = FileManager(config.file_manager.working_directory)
-        create_logger(file_manager.log_dir, config.logging.level, config.logging.develop)
+        logger = create_logger(file_manager.log_dir, **config.logging.model_dump())
+        config.attach_logger(logger)
+        proxy = ServerProxy(logger, file_manager, config.server_proxy)
+        report_current_system_info(logger, file_manager, proxy)
     except Exception as e:
-        print(f"Fatal error encounter on startup: {e}")
+        if logger:
+            logger.critical(f"Fatal error encounter on startup: {e}")
+        else:
+            print(f"Critical error, before logger start: {e}")
+            sys.exit(1)
+
+    logger.info("Initialisation complete, handing program control to the JobManager")
+
+    proxy.running = False
+    logger.info("Runner terminating")
 
 
 if __name__ == "__main__":

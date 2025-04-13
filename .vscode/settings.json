@@ -11,7 +11,7 @@
     100
   ],
   "editor.codeActionsOnSave": {
-    "source.organizeImports": true
+    "source.organizeImports": "explicit"
   },
   "flake8.args": [
     "--max-line-length=100"

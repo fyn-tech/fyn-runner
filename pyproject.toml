@@ -5,8 +5,11 @@ dependencies = [
     "appdirs",
     "nvidia-ml-py",
     "psutil",
+    "py-cpuinfo",
     "pydantic",
-    "pyyaml"
+    "pyyaml",
+    "requests",
+    "websocket-client"
 ]
 
 [project.optional-dependencies]
@@ -28,5 +31,9 @@ max-line-length = 100
 disable = [
     "missing-module-docstring",
     "broad-exception-caught",
-    "logging-fstring-interpolation"
+    "logging-fstring-interpolation",
+    "too-many-arguments",
+    "too-many-positional-arguments",
+    "too-many-instance-attributes",
+    "too-many-public-methods"
 ]

@@ -25,7 +25,7 @@ class LoggingConfig(BaseModel):
         default=False,
         description="Enable development mode, which adds a stream hander for additional console "
                     "logging")
-    retention: int = Field(default=30, description="Number of days to retain log files")
+    retention_days: int = Field(default=30, description="Number of days to retain log files")
 
 
 class FileManagerConfig(BaseModel):
