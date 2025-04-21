@@ -17,6 +17,7 @@ import threading
 import time
 from concurrent.futures import Future
 from urllib.parse import urljoin
+from queue import PriorityQueue
 
 import requests
 from websocket import WebSocketApp
@@ -50,7 +51,7 @@ class ServerProxy:
         self.running: bool = True
 
         # HTTP message handing and related
-        self._queue: MessageQueue = MessageQueue()
+        self._queue: PriorityQueue = PriorityQueue()
         self._new_send_message: threading.Event = threading.Event()
         self._send_thread: threading.Thread = threading.Thread(target=self._send_handler)
         self._send_thread.daemon = True
@@ -87,7 +88,7 @@ class ServerProxy:
         """
         try:
             self.logger.debug(f"Pushing message {message.msg_id}")
-            self._queue.push_message(message)
+            self._queue.put(message)
             self._new_send_message.set()
         except Exception as e:
             self.logger.error(f"Failed to push message ({message.msg_id}): {e}")
@@ -110,7 +111,7 @@ class ServerProxy:
         new_future = Future()
         with self._response_futures_lock:
             self._response_futures[message.msg_id] = new_future
-
+            
         try:
             self.push_message(message)
             return new_future
@@ -230,8 +231,8 @@ class ServerProxy:
             # Check and send all messages
             if message_added:
                 self._new_send_message.clear()
-                while not self._queue.is_empty():
-                    message = self._queue.get_next_message()
+                while not self._queue.empty():
+                    message = self._queue.get()
                     try:
                         self._send_message(message)
                     except Exception as e:
