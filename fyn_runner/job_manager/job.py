@@ -57,7 +57,7 @@ class Job:  # this is the SimulationMonitor (in its own thread)
     @property
     def status(self):
         return self._status
-    
+
     @property.setter
     def status(self, new_status):
         old_status = self._status
