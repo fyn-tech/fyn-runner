@@ -23,7 +23,6 @@ import requests
 from websocket import WebSocketApp
 
 from fyn_runner.server.message import HttpMethod, Message
-from fyn_runner.server.message_queue import MessageQueue
 
 
 class ServerProxy:
@@ -111,7 +110,7 @@ class ServerProxy:
         new_future = Future()
         with self._response_futures_lock:
             self._response_futures[message.msg_id] = new_future
-            
+
         try:
             self.push_message(message)
             return new_future

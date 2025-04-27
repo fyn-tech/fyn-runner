@@ -82,8 +82,6 @@ classDiagram
   JobManager *--ServerProxy
   JobManager *-- FileManager
 
-
-  Job *-- FileManager
   Job *-- JobStatus
   Job o-- ServerProxy
 
@@ -128,7 +126,6 @@ classDiagram
       JobStatus status
       Path case_path
 
-      FileManager file_manager
       ServerProxy server_proxy
       thread job_monitor
 
@@ -149,9 +146,9 @@ classDiagram
       _handle_pause()
       _handle_termination()
       _fetch_case_files()
-      _post_job_results()
-      _patch_job_progress()
-      _patch_job_status_change()
+      _report_job_results()
+      _report_job_progress()
+      _report_status_change()
     }
 
     class JobStatus {

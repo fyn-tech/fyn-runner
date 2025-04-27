@@ -11,21 +11,31 @@
 # You should have received a copy of the GNU General Public License along with this program. If not,
 #  see <https://www.gnu.org/licenses/>.
 
-import uuid
+from logging import Logger
 from pathlib import Path
+import uuid
+
+from fyn_runner.job_manager.job_status import JobStatus
+from fyn_runner.server.server_proxy import ServerProxy
+from fyn_runner.server.message import Message
+
 
 class Job:  # this is the SimulationMonitor (in its own thread)
-    def __init__(self, id, server_proxy, case_directory, logger):
-        self.id : uuid.uuid4 = id
-        self.case_directory : Path = case_directory
-        self.logger = logger
-        self.server_proxy = server_proxy
+    def __init__(self, id, server_proxy: ServerProxy, case_directory: Path, logger: Logger):
+        self.id: uuid.uuid4 = id
+        self.case_directory: Path = case_directory
+        self._status: JobStatus = JobStatus.QUEUED  # We start queued
 
+        self.logger: Logger = logger
+        self.server_proxy: ServerProxy = server_proxy
+
+    def launch(self):
         self.setup()
         self.run()
-        self.clean_up()
+        self.finalize()
 
     def setup(self):
+
         # 1. Create job directoy
         # 2. Go to the backend to get job files/resources
         # 3. add listeners for commands from server
@@ -43,3 +53,23 @@ class Job:  # this is the SimulationMonitor (in its own thread)
         # 2. deregister listeners
 
         pass
+
+    @property
+    def status(self):
+        return self._status
+    
+    @property.setter
+    def status(self, new_status):
+        old_status = self._status
+        self.status = new_status
+        if old_status != new_status:
+            self._report_status_change()
+
+    def _report_status_change(self):
+        """
+        Warning -> rather use status setter
+        """
+        self.server_proxy.push_message(
+            Message(
+            )
+        )
