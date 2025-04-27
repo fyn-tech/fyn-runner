@@ -10,7 +10,7 @@ Key responsibilities include:
 - Collecting and reporting system hardware information
 - Managing the execution environment for simulations
 - Communicating with the fyn-api regarding job status
-- Organizing and synchronizing simulation files
+- Organising and synchronising simulation files
 - Providing secure authentication with the Fyn-Tech backend
 
 > **Note:** This project is in early development stages, and many components are still evolving.
@@ -34,22 +34,22 @@ The current configuration options for the `.yaml` can be found in `fyn_runner/co
 The runner follows a modular design pattern with several key components:
 
 - **Server Proxy**: Handles communication with the fyn-api backend
-- **File Manager**: Organizes simulation input/output and synchronizes with cloud storage
+- **File Manager**: Organises simulation input/output and synchronises with cloud storage
 - **System Integration**: Collects hardware information and manages runner installation
 
 Additional components under development:
 - Job Manager
 - Simulation Monitor
 
-Further documentation can be found in the `/doc` folder, where `primary_design.md` contains the high level architecture design.
+Further documentation can be found in the `/doc` folder, where `primary_design.md` contains the high-level architecture design.
 
 ## Testing strategy
 
 Most of the tests in this library will be written by AI, or at least it's requested that LLMs generate the initial boilerplate for the unit tests.
-Organization should still be maintained within the test files and structures.
+The organisation should still be maintained within the test files and structures.
 Further, generated tests should still be checked for coverage and correctness (acting as a code review for tests).
-See the `/doc/test_prompt.md` document which can be used for prompting the LLM when generating unit tests;
-this document also contains the specific guidelines regarding `fixtures`, `mocking`, what needs testing, and whether to combine or separate tests.
+See the `/doc/test_prompt.md` document, which can be used for prompting the LLM when generating unit tests;
+This document also contains the specific guidelines regarding `fixtures`, `mocking`, what needs testing, and whether to combine or separate tests.
 
 ## Project Context
 
