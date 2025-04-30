@@ -20,12 +20,12 @@ import time
 from concurrent.futures import Future
 from pathlib import Path
 from unittest.mock import MagicMock, patch
+from queue import PriorityQueue
 
 import pytest
 import requests
 
 from fyn_runner.server.message import HttpMethod, Message
-from fyn_runner.server.message_queue import MessageQueue
 from fyn_runner.server.server_proxy import ServerProxy
 
 
@@ -91,7 +91,7 @@ class TestServerProxy:
         """Test the initialization of ServerProxy."""
         # Check that essential attributes are initialized
         assert server_proxy.running is True
-        assert isinstance(server_proxy._queue, MessageQueue)
+        assert isinstance(server_proxy._queue, PriorityQueue)
         assert isinstance(server_proxy._new_send_message, threading.Event)
 
         # Check that thread is created (mocked) - using our stored mock
@@ -123,14 +123,14 @@ class TestServerProxy:
         mock_message = MagicMock()
 
         # Mock the queue's push_message method and the event
-        server_proxy._queue.push_message = MagicMock()
+        server_proxy._queue.put = MagicMock()
         server_proxy._new_send_message.set = MagicMock()
 
         # Call push_message
         server_proxy.push_message(mock_message)
 
         # Verify that the message was added to the queue
-        server_proxy._queue.push_message.assert_called_once_with(mock_message)
+        server_proxy._queue.put.assert_called_once_with(mock_message)
 
         # Verify that the event was set
         server_proxy._new_send_message.set.assert_called_once()
@@ -142,7 +142,7 @@ class TestServerProxy:
 
         # Make queue.push_message raise an exception
         error_msg = "Test error"
-        server_proxy._queue.push_message = MagicMock(side_effect=Exception(error_msg))
+        server_proxy._queue.put = MagicMock(side_effect=Exception(error_msg))
 
         # Call push_message and expect exception to be raised
         with pytest.raises(Exception):
@@ -159,14 +159,14 @@ class TestServerProxy:
         mock_message.msg_id = "test-message-id"
 
         # Mock the queue's push_message method and the event
-        server_proxy._queue.push_message = MagicMock()
+        server_proxy._queue.put = MagicMock()
         server_proxy._new_send_message.set = MagicMock()
 
         # Call push_message_with_response
         future = server_proxy.push_message_with_response(mock_message)
 
         # Verify that the message was added to the queue
-        server_proxy._queue.push_message.assert_called_once_with(mock_message)
+        server_proxy._queue.put.assert_called_once_with(mock_message)
 
         # Verify that the event was set
         server_proxy._new_send_message.set.assert_called_once()
@@ -184,7 +184,7 @@ class TestServerProxy:
 
         # Make queue.push_message raise an exception
         error_msg = "Test error"
-        server_proxy._queue.push_message = MagicMock(side_effect=Exception(error_msg))
+        server_proxy._queue.put = MagicMock(side_effect=Exception(error_msg))
 
         # Call push_message_with_response and expect exception
         with pytest.raises(Exception):

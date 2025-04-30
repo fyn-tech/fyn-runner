@@ -10,3 +10,16 @@
 #
 # You should have received a copy of the GNU General Public License along with this program. If not,
 #  see <https://www.gnu.org/licenses/>.
+
+from queue import PriorityQueue
+
+class JobManager:
+
+    def __init__(self, server_proxy, file_manager, logger):
+
+        # injected objects
+        self.server_proxy = server_proxy
+        self.file_manager = file_manager
+        self.logger = logger
+
+        self._queue: PriorityQueue = PriorityQueue()

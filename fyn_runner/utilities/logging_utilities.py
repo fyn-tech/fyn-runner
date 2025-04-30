@@ -23,7 +23,7 @@ def create_logger(
         level=logging.INFO,
         develop=False,
         name="fyn_runner",
-        retention_days=30):
+        retention_days=30) -> logging.Logger:
     """
      Create and configure a logger instance with file and optional console output.
 

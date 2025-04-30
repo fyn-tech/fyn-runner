@@ -78,18 +78,15 @@ config:
 classDiagram
 
   %% Relationships
-  JobManager *--SimulationMonitor
+  JobManager *--Job
   JobManager *--ServerProxy
   JobManager *-- FileManager
 
-
-  SimulationMonitor *-- FileManager
-  SimulationMonitor *-- Status
-  SimulationMonitor o-- ServerProxy
+  Job *-- JobStatus
+  Job o-- ServerProxy
 
   ServerProxy *-- APIEndPoint
-  ServerProxy *-- MessageQueue
-  MessageQueue *-- Message
+  ServerProxy *-- Message
 
   FileManager *-- RunnerConfig
 
@@ -98,7 +95,7 @@ classDiagram
   class JobManager {
     %% FIXME: Hardware/system info stuff is not in the job manager.
     %% Attributes:
-    List~SimulationMonitor~ simulations
+    PriorityQueue~Job~ job_queue
     ServerProxy backend_communicator
 
     %% Methods:
@@ -123,13 +120,14 @@ classDiagram
 
   namespace Simulation {
 
-    class SimulationMonitor {
+    class Job {
       %% Attributes:
-      string name
+      UUID id
+      JobStatus status
       Path case_path
-      Status status
-      Path config_file_path
-      thread simulation_monitor
+
+      ServerProxy server_proxy
+      thread job_monitor
 
       int _pid
       int _exit_code
@@ -145,11 +143,15 @@ classDiagram
       _start_monitor_thread() -> thread
 
       %% API
+      _handle_pause()
+      _handle_termination()
+      _fetch_case_files()
+      _report_job_results()
       _report_job_progress()
-      _report_job_status_change()
+      _report_status_change()
     }
 
-    class Status {
+    class JobStatus {
       <<enum>>
     }
   }
@@ -165,7 +167,7 @@ classDiagram
     class ServerProxy {
       %% Attributes:
       APIEndPoint api
-      MessageQueue message_queue
+      PriorityQueue~Message~ message_queue
       Dict~str, observer_call_back[]~ observer_list
       thread _outgoing_message_handler
       thread _incoming_message_handler
@@ -185,14 +187,6 @@ classDiagram
 
     class APIEndPoint {
       <<enum>>
-    }
-
-    class MessageQueue {
-      Message[] messages
-
-      is_empty() ->bool
-      push_message(Message)
-      get_next_message() -> Message
     }
 
     class Message {
