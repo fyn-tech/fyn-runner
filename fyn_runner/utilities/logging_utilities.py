@@ -17,6 +17,12 @@ import os
 import time
 from pathlib import Path
 
+try:
+    import colorlog
+    HAS_COLORLOG = True
+except ImportError:
+    HAS_COLORLOG = False
+
 
 def create_logger(
         log_dir,
@@ -55,29 +61,60 @@ def create_logger(
     for handler in logger.handlers[:]:
         logger.removeHandler(handler)
 
-    # Set format
-    formatter = logging.Formatter(
-        '[%(asctime)s][%(levelname)s][%(filename)s::%(lineno)d]: %(message)s'
-    )
+    # Create formatters - colored for console, plain for file
+    if HAS_COLORLOG:
+        # Colored formatter for console output
+        console_formatter = colorlog.ColoredFormatter(
+            '%(log_color)s[%(asctime)s]%(reset)s%(log_color)s[%(levelname)s]%(reset)s%(purple)s'
+            '[%(filename)s::%(lineno)d]:%(reset)s %(white)s%(message)s%(reset)s',
+            log_colors={
+                'DEBUG': 'blue',
+                'INFO': 'green', 
+                'WARNING': 'yellow',
+                'ERROR': 'red',
+                'CRITICAL': 'red,bg_white',
+            },
+            secondary_log_colors={
+                '': {
+                    'purple': 'purple',
+                    'white': 'white'
+                }
+            }
+        )
+        # Plain formatter for file output (no colors)
+        file_formatter = logging.Formatter(
+            '[%(asctime)s][%(levelname)s][%(filename)s::%(lineno)d]: %(message)s'
+        )
+    else:
+        # Fallback to regular formatter if colorlog not available
+        regular_formatter = logging.Formatter(
+            '[%(asctime)s][%(levelname)s][%(filename)s::%(lineno)d]: %(message)s'
+        )
+        file_formatter = regular_formatter
+        console_formatter = regular_formatter
 
     # File handler for all logs
     file_handler = logging.FileHandler(log_path)
     file_handler.setLevel(level)
-    file_handler.setFormatter(formatter)
+    file_handler.setFormatter(file_formatter)
     logger.addHandler(file_handler)
 
     # Console handler for development mode
     if develop:
         console_handler = logging.StreamHandler()
         console_handler.setLevel(level)
-        console_handler.setFormatter(formatter)
+        console_handler.setFormatter(console_formatter)
         logger.addHandler(console_handler)
 
     # Log startup information
     logger.info(f"Logger initialized, logging to: {log_path.absolute()}")
     logger.info(f"Logging at {logging.getLevelName(logger.level)} level")
     if develop:
-        logger.info("Logging in development mode")
+        if HAS_COLORLOG:
+            logger.info("Logging in development mode with colors (console only," \
+            " files are plain text)")
+        else:
+            logger.info("Logging in development mode (install 'colorlog' for colors)")
 
     # Clean up old logs
     try:

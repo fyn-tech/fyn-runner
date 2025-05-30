@@ -46,6 +46,7 @@ def main():
         config = ConfigManager(args.config, RunnerConfig)
         config.load()
         file_manager = FileManager(config.file_manager.working_directory)
+        file_manager.init_directories()
         logger = create_logger(file_manager.log_dir, **config.logging.model_dump())
         config.attach_logger(logger)
         proxy = ServerProxy(logger, file_manager, config.server_proxy)
@@ -59,7 +60,9 @@ def main():
 
     logger.info("Initialisation complete, handing program control to the JobManager")
 
-    proxy.running = False
+    if proxy is not None:
+        proxy.running = False
+
     logger.info("Runner terminating")
 
 
