@@ -59,7 +59,6 @@ class FileManager:
             self.log_dir,
             self.simulation_dir
         ]:
-            print(directory)
             directory.mkdir(parents=True, exist_ok=True)
 
     @property
