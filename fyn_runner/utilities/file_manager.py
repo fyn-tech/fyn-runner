@@ -50,10 +50,7 @@ class FileManager:
         # Simulation directory is always in user data (place holder)
         self._simulation_dir = self._runner_dir / "simulations"
 
-        # Initialize directories
-        self._init_directories()
-
-    def _init_directories(self):
+    def init_directories(self):
         """Create folder structure."""
         for directory in [
             self.runner_dir,
@@ -62,6 +59,7 @@ class FileManager:
             self.log_dir,
             self.simulation_dir
         ]:
+            print(directory)
             directory.mkdir(parents=True, exist_ok=True)
 
     @property
