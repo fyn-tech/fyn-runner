@@ -15,16 +15,10 @@ import atexit
 import json
 import threading
 import time
-from concurrent.futures import Future
-from urllib.parse import urljoin
-from queue import PriorityQueue
 import requests
 from websocket import WebSocketApp
 
 import fyn_api_client as fac
-
-from fyn_runner.server.message import HttpMethod, Message
-
 
 class ServerProxy:
     """todo
@@ -45,15 +39,14 @@ class ServerProxy:
         self.token = str(configuration.token)
         self.report_interval = configuration.report_interval
         self.api_config = fac.Configuration()
+        logger.warning("report_interval not used, wip.")
 
         # Proxy Status
         self.running: bool = True
 
         # HTTP message handing and related
-        self._api_client = None
-        self._runner_api = None
-        self._configure_client_api()  # don't catch here, allow propagation at initialisation.
-        
+        self._api_client = self._configure_client_api()  
+        self._runner_api = self.create_runner_manager_api()
 
         # Websocket message handling and related
         self._observers = {}
@@ -73,10 +66,27 @@ class ServerProxy:
     # ----------------------------------------------------------------------------------------------
 
     def create_job_manager_api(self):
-        pass
+        """
+        TODO
+        """
+        try:
+            job_api = fac.JobManagerApi(self._api_client)      
+        except Exception as e:
+            self.logger.error(f"Error while configuring the client api: {str(e)}")
+            raise Exception(f"Error while configuring the client api: {str(e)}")
+        return job_api
+
 
     def create_runner_manager_api(self):
-        pass
+        """
+        TODO
+        """
+        try:
+            runner_api = fac.RunnerManagerApi(self._api_client)      
+        except Exception as e:
+            self.logger.error(f"Error while configuring the client api: {str(e)}")
+            raise Exception(f"Error while configuring the client api: {str(e)}")
+        return runner_api
 
     def register_observer(self, message_type, call_back):
         """
@@ -134,8 +144,7 @@ class ServerProxy:
             None
 
         Raises:
-            ConnectionError: If any network-related errors occur during the status update,
-                including connection errors, timeouts, or HTTP error responses.
+            FIXME: Do we still raise
         """
 
         self.logger.debug(f"Reporting status {status.value}")
@@ -150,24 +159,16 @@ class ServerProxy:
 
     def _configure_client_api(self):
         """
-        This method is called during the initialization of the ServerProxy. A successful call
-        indicates that the runner has been registered with the server and is ready to receive jobs.
-
-        Returns:
-            None
-
-        Raises:
-            ConnectionError: If the connection to the server cannot be established, this method will
-                propagate any ConnectionError raised by _report_status.
-
+        TODO
+        FIXME: Do we still raise
         """
         try:
-            self._api_client = fac.ApiClient(self.api_config)
-            self._api_client.set_default_header("Authorization", f"Token {str(self.token)}")
-            self._runner_api = fac.RunnerManagerApi(self._api_client)      
+            api_client = fac.ApiClient(self.api_config)
+            api_client.set_default_header("Authorization", f"Token {str(self.token)}") 
         except Exception as e:
             self.logger.error(f"Error while configuring the client api: {str(e)}")
             raise Exception(f"Error while configuring the client api: {str(e)}")
+        return api_client
 
     def _send_handler(self):
         """
