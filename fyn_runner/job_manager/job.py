@@ -13,63 +13,60 @@
 
 from logging import Logger
 from pathlib import Path
-import uuid
 
-from fyn_runner.job_manager.job_status import JobStatus
+from fyn_api_client.models.status_enum import StatusEnum
+from fyn_api_client.models.job_info import JobInfo
+from fyn_api_client.models.patched_job_info_request import PatchedJobInfoRequest
 from fyn_runner.server.server_proxy import ServerProxy
 from fyn_runner.server.message import Message
+from fyn_runner.job_manager.job_activity_tracking import ActiveJobTracker, ActivityState
 
 
 class Job:  # this is the SimulationMonitor (in its own thread)
-    def __init__(self, id, server_proxy: ServerProxy, case_directory: Path, logger: Logger):
-        self.id: uuid.uuid4 = id
+    def __init__(self, job: JobInfo, server_proxy: ServerProxy, case_directory: Path,
+                 logger: Logger, activtiy_tracker:ActiveJobTracker):
         self.case_directory: Path = case_directory
-        self._status: JobStatus = JobStatus.QUEUED  # We start queued
-
+        self.job: JobInfo = job
         self.logger: Logger = logger
         self.server_proxy: ServerProxy = server_proxy
+        self.job_api = server_proxy.create_job_manager_api()
+        self._job_activity_tracker: ActiveJobTracker = activtiy_tracker
 
-    def launch(self):
-        self.setup()
-        self.run()
-        self.finalize()
+    def _launch(self):
+        self._setup()
+        self._run()
+        self._clean_up()
 
-    def setup(self):
+    def _setup(self):
 
         # 1. Create job directoy
+        jir = PatchedJobInfoRequest(status=StatusEnum.PR)
+        self.job.status = StatusEnum.PR
+        self.job_api.job_manager_runner_partial_update(self.job.id, patched_job_info_request=jir)
+        self._job_activity_tracker.add_job(self.job) # only update if sever is happy
+
         # 2. Go to the backend to get job files/resources
+
         # 3. add listeners for commands from server
+
         pass
 
-    def run():
+    def _run(self):
         # 1. launch job
+        jir =  PatchedJobInfoRequest(status=StatusEnum.RN)
+        self.job_api.job_manager_runner_partial_update(self.job.id, patched_job_info_request=jir)
+        self._job_activity_tracker.update_job_status(self.job.id, jir.status)
         # 2. Loop
         # 2. report progress
         # 3. terminate/update if requested (via handlers)
         pass
 
-    def clean_up():
+    def _clean_up(self):
+        jir =  PatchedJobInfoRequest(status=StatusEnum.CU)
+        self.job_api.job_manager_runner_partial_update(self.job.id, patched_job_info_request=jir)
+        self._job_activity_tracker.update_job_status(self.job.id, jir.status)
         # 1. report progress
         # 2. deregister listeners
-
+                 
+        
         pass
-
-    @property
-    def status(self):
-        return self._status
-
-    @property.setter
-    def status(self, new_status):
-        old_status = self._status
-        self.status = new_status
-        if old_status != new_status:
-            self._report_status_change()
-
-    def _report_status_change(self):
-        """
-        Warning -> rather use status setter
-        """
-        self.server_proxy.push_message(
-            Message(
-            )
-        )
