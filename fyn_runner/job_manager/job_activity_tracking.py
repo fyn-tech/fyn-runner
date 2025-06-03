@@ -35,7 +35,7 @@ def job_status_to_activity_status(status):
             return ActivityState.ACTIVE
         case StatusEnum.CU:
             return ActivityState.ACTIVE
-        case StatusEnum.UP:
+        case StatusEnum.UR:
             return ActivityState.ACTIVE
         
         case StatusEnum.SD:
@@ -47,6 +47,8 @@ def job_status_to_activity_status(status):
         case StatusEnum.FM:
             return ActivityState.COMPLETE
         case StatusEnum.FO:
+            return ActivityState.COMPLETE
+        case StatusEnum.FE:
             return ActivityState.COMPLETE
         case _:
             raise ValueError(f"Unknown Status: {status}")
@@ -149,3 +151,6 @@ class ActiveJobTracker:
                 'total': len(self._active_jobs) + len(self._completed_jobs)
             }
             
+    def is_tracked(self, job_id):
+        """Checks if the job is in the data structure."""
+        return self.is_active(job_id) or self.is_completed(job_id)
