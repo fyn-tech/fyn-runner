@@ -35,7 +35,6 @@ class Job:  # this is the SimulationMonitor (in its own thread)
     def launch(self):
         try:
             self._setup()
-            self.sd
             self._run()
             self._clean_up()
         except Exception as e:
