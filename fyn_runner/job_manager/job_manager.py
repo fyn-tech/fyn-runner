@@ -118,7 +118,7 @@ class JobManager:
         self.logger.info(f"Launching new job {job_info.id}")
         thread = None
         try:
-            job = Job(job_info, self.server_proxy, Path(""), self.logger, 
+            job = Job(job_info, self.server_proxy, self.file_manager, self.logger, 
                       self._job_activity_tracker)
             thread = Thread(target=job.launch)     
             thread.start()

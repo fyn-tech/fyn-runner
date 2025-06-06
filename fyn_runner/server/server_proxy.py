@@ -65,6 +65,17 @@ class ServerProxy:
     #  Proxy Interface
     # ----------------------------------------------------------------------------------------------
 
+    def create_application_registry_api(self):
+        """
+        TODO
+        """
+        try:
+            job_api = fac.ApplicationRegistryApi(self._api_client)      
+        except Exception as e:
+            self.logger.error(f"Error while configuring the client api: {str(e)}")
+            raise Exception(f"Error while configuring the client api: {str(e)}")
+        return job_api
+
     def create_job_manager_api(self):
         """
         TODO
