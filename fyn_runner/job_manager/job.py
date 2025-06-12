@@ -15,7 +15,7 @@ from logging import Logger
 from pathlib import Path
 
 from fyn_api_client.models.status_enum import StatusEnum
-from fyn_api_client.models.job_info import JobInfo
+from fyn_api_client.models.job_info_runner import JobInfoRunner
 from fyn_api_client.models.app import App
 from fyn_api_client.models.type_enum import TypeEnum
 from fyn_api_client.models.patched_job_info_runner_request import PatchedJobInfoRunnerRequest
@@ -26,11 +26,11 @@ from fyn_runner.job_manager.job_activity_tracking import ActiveJobTracker, Activ
 
 
 class Job:  # this is the SimulationMonitor (in its own thread)
-    def __init__(self, job: JobInfo, server_proxy: ServerProxy, file_manager: FileManager,
+    def __init__(self, job: JobInfoRunner, server_proxy: ServerProxy, file_manager: FileManager,
                  logger: Logger, activtiy_tracker:ActiveJobTracker):
         self.file_manager: FileManager = file_manager
         self.case_directory: Path
-        self.job: JobInfo = job
+        self.job: JobInfoRunner = job
         self.application: App
         self.logger: Logger = logger
         self.server_proxy: ServerProxy = server_proxy
@@ -108,7 +108,13 @@ class Job:  # this is the SimulationMonitor (in its own thread)
             self._handle_applicaition(file)
         except Exception as e:
             raise Exception(f"Failed to fetch application: {e}")
+        
         # 2. Fetch other files
+        try:
+            print(self.job.resources)
+        except Exception as e:
+            raise Exception(f"Failed to fetch application: {e}")
+
 
     def _handle_applicaition(self, file):
 
