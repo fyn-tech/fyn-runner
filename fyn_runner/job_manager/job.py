@@ -39,6 +39,7 @@ class Job:  # this is the SimulationMonitor (in its own thread)
         self._app_reg_api = server_proxy.create_application_registry_api()
         self._job_api = server_proxy.create_job_manager_api()
         self._job_activity_tracker: ActiveJobTracker = activity_tracker
+        self._job_result: subprocess.CompletedProcess = subprocess.CompletedProcess()
 
     def launch(self):
         try:
@@ -65,23 +66,22 @@ class Job:  # this is the SimulationMonitor (in its own thread)
         self._fetching_simulation_resources()
 
         # 3. add listeners for commands from server
-        self.logger.warning("Attached listeners")
+        self.logger.warning("Attached listeners to be implemented")
 
     def _run(self):
         """
-        Don't catch in this function -> catch either in launch or in the sub fuctions.
+        Don't catch in this function -> catch either in launch or in the sub functions.
         """
         # 1. launch job
         self.logger.info(f"Job {self.job.id} is in run")
         self._run_application()
 
-        # 2. Loop
         # 2. report progress
-        # 3. terminate/update if requested (via handlers)
+        self.logger.warning("Switch to loop and report progress")
 
     def _clean_up(self):
         """
-        Don't catch in this function -> catch either in launch or in the sub fuctions.
+        Don't catch in this function -> catch either in launch or in the sub functions.
         """
 
         self.logger.info(f"Job {self.job.id} is in clean up")
@@ -172,18 +172,27 @@ class Job:  # this is the SimulationMonitor (in its own thread)
     def _run_application(self):
 
         self._update_status(StatusEnum.RN)
-        # try:
-        command = self.job.executable
-        print(f"new: {self.job.command_line_args}")
-        # result = subprocess.run(
-        #         ,
-        #         stdout=subprocess.PIPE,
-        #         stderr=subprocess.STDOUT,  # Combine stderr with stdout
-        #         text=True,
-        #         bufsize=1
-        #     )
-        # except:
-        #     # reraise
+        try:
+            command = self.job.executable + " "
+            command += " ".join(self.job.command_line_args)
+            self.logger.info(f"Launching job {self.job.id}: {command}")
+            self._job_exit_code = subprocess.run(
+                    command,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.STDOUT,  # Combine stderr with stdout
+                    text=True,
+                    bufsize=1,
+                    cwd=self.case_directory,
+                    shell=True
+                )
+            self.logger.info(f"Job {self.job.id} completed.")
+        except Exception as e:
+            raise RuntimeError(f"Exception while executing application: {e}")
+
+    # ----------------------------------------------------------------------------------------------
+    #  Clean up functions Functions
+    # ----------------------------------------------------------------------------------------------
+
 
     # ----------------------------------------------------------------------------------------------
     #  Misc Functions
