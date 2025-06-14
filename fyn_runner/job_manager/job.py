@@ -13,6 +13,7 @@
 
 from logging import Logger
 from pathlib import Path
+import subprocess
 
 from fyn_api_client.models.status_enum import StatusEnum
 from fyn_api_client.models.job_info_runner import JobInfoRunner
@@ -72,7 +73,8 @@ class Job:  # this is the SimulationMonitor (in its own thread)
         """
         # 1. launch job
         self.logger.info(f"Job {self.job.id} is in run")
-        self._update_status(StatusEnum.RN)
+        self._run_application()
+
         # 2. Loop
         # 2. report progress
         # 3. terminate/update if requested (via handlers)
@@ -97,8 +99,11 @@ class Job:  # this is the SimulationMonitor (in its own thread)
         self.logger.debug(f"Job {self.job.id}: local directory creation")
         try:
             self.case_directory = self.file_manager.request_simulation_directory(self.job.id)
+            jir = PatchedJobInfoRunnerRequest(working_directory=str(self.case_directory))
+            self._job_api.job_manager_runner_partial_update(self.job.id,
+                                                            patched_job_info_runner_request=jir)
         except Exception as e:
-            raise RuntimeError(f"Could not setup a simulation directory: {e}")
+            raise RuntimeError(f"Could complete a simulation directory setup: {e}")
 
     def _fetching_simulation_resources(self):
         """  """
@@ -159,6 +164,26 @@ class Job:  # this is the SimulationMonitor (in its own thread)
             response.raise_for_status()
 
             return response.content
+
+    # ----------------------------------------------------------------------------------------------
+    #  Run/Execution Functions
+    # ----------------------------------------------------------------------------------------------
+
+    def _run_application(self):
+
+        self._update_status(StatusEnum.RN)
+        # try:
+        command = self.job.executable
+        print(f"new: {self.job.command_line_args}")
+        # result = subprocess.run(
+        #         ,
+        #         stdout=subprocess.PIPE,
+        #         stderr=subprocess.STDOUT,  # Combine stderr with stdout
+        #         text=True,
+        #         bufsize=1
+        #     )
+        # except:
+        #     # reraise
 
     # ----------------------------------------------------------------------------------------------
     #  Misc Functions
