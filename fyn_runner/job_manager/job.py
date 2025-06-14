@@ -20,7 +20,6 @@ from fyn_api_client.models.job_info_runner import JobInfoRunner
 from fyn_api_client.models.app import App
 from fyn_api_client.models.type_enum import TypeEnum
 from fyn_api_client.models.patched_job_info_runner_request import PatchedJobInfoRunnerRequest
-from fyn_api_client.models.job_resource_runner_request import JobResourceRunnerRequest
 
 from fyn_runner.server.server_proxy import ServerProxy
 from fyn_runner.job_manager.job_activity_tracking import ActiveJobTracker
@@ -39,14 +38,14 @@ class Job:  # this is the SimulationMonitor (in its own thread)
         self._app_reg_api = server_proxy.create_application_registry_api()
         self._job_api = server_proxy.create_job_manager_api()
         self._job_activity_tracker: ActiveJobTracker = activity_tracker
-        self._job_result: subprocess.CompletedProcess = subprocess.CompletedProcess()
+        self._job_result: subprocess.CompletedProcess = None
 
     def launch(self):
         try:
             self._setup()
             self._run()
             self._clean_up()
-            self._update_status(StatusEnum.SD)
+            self.logger.info(f"Job {self.job.id} completed.")
         except Exception as e:
             self.logger.error(f"Job {self.job.id} suffered a runner exception: {e}")
             self._update_status(StatusEnum.FE)
@@ -86,8 +85,15 @@ class Job:  # this is the SimulationMonitor (in its own thread)
 
         self.logger.info(f"Job {self.job.id} is in clean up")
         self._update_status(StatusEnum.CU)
+
         # 1. report progress
-        # 2. deregister listeners
+        self._report_application_result()
+
+        # 2. Upload results
+        self.logger.warning("Results upload not implemented")
+
+        # 3. deregister listeners
+        self.logger.warning("Deregistration not implemented")
 
     # ----------------------------------------------------------------------------------------------
     #  Setup Functions
@@ -175,11 +181,16 @@ class Job:  # this is the SimulationMonitor (in its own thread)
         try:
             command = self.job.executable + " "
             command += " ".join(self.job.command_line_args)
+            out_log = self.case_directory / f"{self.job.id}_out.log"
+            err_log = self.case_directory / f"{self.job.id}_err.log"
+
             self.logger.info(f"Launching job {self.job.id}: {command}")
-            self._job_exit_code = subprocess.run(
+            with open(out_log, "w", encoding="utf-8") as stdout_file, \
+                 open(err_log, "w", encoding="utf-8") as stderr_file:
+                self._job_result = subprocess.run(
                     command,
-                    stdout=subprocess.PIPE,
-                    stderr=subprocess.STDOUT,  # Combine stderr with stdout
+                    stdout=stdout_file,
+                    stderr=stderr_file, 
                     text=True,
                     bufsize=1,
                     cwd=self.case_directory,
@@ -193,6 +204,16 @@ class Job:  # this is the SimulationMonitor (in its own thread)
     #  Clean up functions Functions
     # ----------------------------------------------------------------------------------------------
 
+    def _report_application_result(self):
+       
+        jir = PatchedJobInfoRunnerRequest(exit_code=self._job_result.returncode)
+        self._job_api.job_manager_runner_partial_update(self.job.id,
+                                                        patched_job_info_runner_request=jir)
+        
+        if self._job_result.returncode == 0:
+            self._update_status(StatusEnum.SD)
+        else: # Failed
+            self._update_status(StatusEnum.FD)
 
     # ----------------------------------------------------------------------------------------------
     #  Misc Functions
