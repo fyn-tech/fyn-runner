@@ -19,15 +19,16 @@ from fyn_api_client.models.job_info_runner import JobInfoRunner
 from fyn_api_client.models.app import App
 from fyn_api_client.models.type_enum import TypeEnum
 from fyn_api_client.models.patched_job_info_runner_request import PatchedJobInfoRunnerRequest
+from fyn_api_client.models.job_resource_runner_request import JobResourceRunnerRequest
+
 from fyn_runner.server.server_proxy import ServerProxy
 from fyn_runner.job_manager.job_activity_tracking import ActiveJobTracker
 from fyn_runner.utilities.file_manager import FileManager
-from fyn_runner.job_manager.job_activity_tracking import ActiveJobTracker, ActivityState
 
 
 class Job:  # this is the SimulationMonitor (in its own thread)
     def __init__(self, job: JobInfoRunner, server_proxy: ServerProxy, file_manager: FileManager,
-                 logger: Logger, activtiy_tracker:ActiveJobTracker):
+                 logger: Logger, activity_tracker: ActiveJobTracker):
         self.file_manager: FileManager = file_manager
         self.case_directory: Path
         self.job: JobInfoRunner = job
@@ -36,7 +37,7 @@ class Job:  # this is the SimulationMonitor (in its own thread)
         self.server_proxy: ServerProxy = server_proxy
         self._app_reg_api = server_proxy.create_application_registry_api()
         self._job_api = server_proxy.create_job_manager_api()
-        self._job_activity_tracker: ActiveJobTracker = activtiy_tracker
+        self._job_activity_tracker: ActiveJobTracker = activity_tracker
 
     def launch(self):
         try:
@@ -63,6 +64,7 @@ class Job:  # this is the SimulationMonitor (in its own thread)
         self._fetching_simulation_resources()
 
         # 3. add listeners for commands from server
+        self.logger.warning("Attached listeners")
 
     def _run(self):
         """
@@ -88,12 +90,12 @@ class Job:  # this is the SimulationMonitor (in its own thread)
     # ----------------------------------------------------------------------------------------------
     #  Setup Functions
     # ----------------------------------------------------------------------------------------------
-    
+
     def _setup_local_simulation_directory(self):
         """ Create a simulation directory. """
-        
+
         self.logger.debug(f"Job {self.job.id}: local directory creation")
-        try: 
+        try:
             self.case_directory = self.file_manager.request_simulation_directory(self.job.id)
         except Exception as e:
             raise RuntimeError(f"Could not setup a simulation directory: {e}")
@@ -102,21 +104,25 @@ class Job:  # this is the SimulationMonitor (in its own thread)
         """  """
         self.logger.debug(f"Job {self.job.id}: fetching program and other remote resources")
         self._update_status(StatusEnum.FR)
-        
+
         try:
             file = self._app_reg_api.application_registry_program_retrieve(self.job.application_id)
-            self._handle_applicaition(file)
+            self._handle_application(file)
         except Exception as e:
             raise Exception(f"Failed to fetch application: {e}")
-        
+
         # 2. Fetch other files
         try:
-            print(self.job.resources)
+            for resource in self.job.resources:
+                resource_data = self._job_api.job_manager_resources_runner_retrieve(resource)
+                file_content = self._download_resource_file(resource_data.id)
+                file_path = self.case_directory / resource_data.filename
+                with open(file_path, 'wb') as f:
+                    f.write(file_content)
         except Exception as e:
-            raise Exception(f"Failed to fetch application: {e}")
+            raise Exception(f"Failed to fetch job files: {e}")
 
-
-    def _handle_applicaition(self, file):
+    def _handle_application(self, file):
 
         match self.application.type:
             case TypeEnum.PYTHON:
@@ -133,11 +139,31 @@ class Job:  # this is the SimulationMonitor (in its own thread)
             case _:
                 raise NotImplemented("Undefined binary case type.")
 
+    def _download_resource_file(self, resource_id: str) -> bytes:
+        """Download the actual file content for a resource"""
+        try:
+            # Option 1: If your auto-generated client has the download method
+            return self._job_api.job_manager_resources_runner_download_retrieve(resource_id)
+        except AttributeError:
+            # Option 2: Direct HTTP request to download endpoint
+            import requests
+
+            # Get the base URL and token from your server proxy
+            base_url = self.server_proxy.base_url  # Adjust based on your ServerProxy implementation
+            token = self.server_proxy.token  # Adjust based on your ServerProxy implementation
+
+            download_url = f"{base_url}/api/job_manager/resources/runner/{resource_id}/download/"
+            headers = {'Authorization': f'Token {token}'}
+
+            response = requests.get(download_url, headers=headers)
+            response.raise_for_status()
+
+            return response.content
 
     # ----------------------------------------------------------------------------------------------
     #  Misc Functions
     # ----------------------------------------------------------------------------------------------
-    
+
     def _update_status(self, status):
 
         try:
