@@ -16,6 +16,7 @@ from pathlib import Path
 import subprocess
 
 from fyn_api_client.models.status_enum import StatusEnum
+from fyn_api_client.models.resource_type_enum import ResourceTypeEnum
 from fyn_api_client.models.job_info_runner import JobInfoRunner
 from fyn_api_client.models.app import App
 from fyn_api_client.models.type_enum import TypeEnum
@@ -86,11 +87,11 @@ class Job:  # this is the SimulationMonitor (in its own thread)
         self.logger.info(f"Job {self.job.id} is in clean up")
         self._update_status(StatusEnum.CU)
 
-        # 1. report progress
-        self._report_application_result()
+        # 1. Upload results
+        self._upload_application_results()
 
-        # 2. Upload results
-        self.logger.warning("Results upload not implemented")
+        # 2. report progress
+        self._report_application_result()
 
         # 3. deregister listeners
         self.logger.warning("Deregistration not implemented")
@@ -140,15 +141,15 @@ class Job:  # this is the SimulationMonitor (in its own thread)
                 with open(self.case_directory / (self.application.name + ".py"), "w") as f:
                     f.write(file.decode('utf-8'))
             case TypeEnum.SHELL:
-                raise NotImplemented("Shell script handling not yet supported.")
+                raise NotImplementedError("Shell script handling not yet supported.")
             case TypeEnum.LINUX_BINARY:
-                raise NotImplemented("Linux binary handling not yet supported.")
+                raise NotImplementedError("Linux binary handling not yet supported.")
             case TypeEnum.WINDOWS_BINARY:
-                raise NotImplemented("Windows binary handling not yet supported.")
+                raise NotImplementedError("Windows binary handling not yet supported.")
             case TypeEnum.UNKNOWN:
-                raise NotImplemented("Cannot process received binary file, consult backend.")
+                raise NotImplementedError("Cannot process received binary file, consult backend.")
             case _:
-                raise NotImplemented("Undefined binary case type.")
+                raise NotImplementedError("Undefined binary case type.")
 
     def _download_resource_file(self, resource_id: str) -> bytes:
         """Download the actual file content for a resource"""
@@ -175,6 +176,22 @@ class Job:  # this is the SimulationMonitor (in its own thread)
     #  Run/Execution Functions
     # ----------------------------------------------------------------------------------------------
 
+    def _upload_application_results(self):
+        self._update_status(StatusEnum.UR)
+        try:
+            for logs in ["_out.log", "_err.log"]:
+                file_path = self.case_directory / (str(self.job.id) + logs)
+                with open(file_path, 'rb') as f:
+                    file_content = f.read()
+                self._job_api.job_manager_resources_runner_create(
+                    str(self.job.id),
+                    file_content,
+                    resource_type=ResourceTypeEnum.LOG,
+                    description="log file",
+                    original_file_path=str(file_path))
+        except Exception as e:
+            raise RuntimeError(f"Could complete job resource upload: {e}")
+
     def _run_application(self):
 
         self._update_status(StatusEnum.RN)
@@ -186,11 +203,11 @@ class Job:  # this is the SimulationMonitor (in its own thread)
 
             self.logger.info(f"Launching job {self.job.id}: {command}")
             with open(out_log, "w", encoding="utf-8") as stdout_file, \
-                 open(err_log, "w", encoding="utf-8") as stderr_file:
+                    open(err_log, "w", encoding="utf-8") as stderr_file:
                 self._job_result = subprocess.run(
                     command,
                     stdout=stdout_file,
-                    stderr=stderr_file, 
+                    stderr=stderr_file,
                     text=True,
                     bufsize=1,
                     cwd=self.case_directory,
@@ -205,14 +222,14 @@ class Job:  # this is the SimulationMonitor (in its own thread)
     # ----------------------------------------------------------------------------------------------
 
     def _report_application_result(self):
-       
+
         jir = PatchedJobInfoRunnerRequest(exit_code=self._job_result.returncode)
         self._job_api.job_manager_runner_partial_update(self.job.id,
                                                         patched_job_info_runner_request=jir)
-        
+
         if self._job_result.returncode == 0:
             self._update_status(StatusEnum.SD)
-        else: # Failed
+        else:  # Failed
             self._update_status(StatusEnum.FD)
 
     # ----------------------------------------------------------------------------------------------
