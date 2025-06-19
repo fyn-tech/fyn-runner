@@ -20,14 +20,45 @@ from websocket import WebSocketApp
 
 import fyn_api_client as fac
 
-class ServerProxy:
-    """todo
 
-    TODO: Package locks and data into a generalised class.
+class ServerProxy:
+    """Factory for REST API clients and WebSocket communication manager.
+
+    This class serves a dual purpose: it acts as a factory for creating OpenAPI-generated REST
+    client instances for communicating with the Django backend, and manages a persistent WebSocket
+    connection for real-time message handling using an observer pattern.
+
+    The proxy automatically reports runner status changes to the backend and handles WebSocket
+    reconnection. It maintains thread-safe observer registration for different message types
+    received via WebSocket.
+
+    TODO: This class should ideally be refactored into separate rest_factory and web_socket_proxy
+          components in the future.
+
+    Attributes:
+        running (bool): Flag indicating if the proxy should continue operating.
+        name (str): Runner name from configuration.
+        id (str): Runner ID for backend identification.
+        token (str): Authentication token for API requests.
     """
 
     def __init__(self, logger, file_manager, configuration):
-        """todo"""
+        """Initialize the ServerProxy with backend communication capabilities.
+
+        Sets up REST API client configuration, initializes WebSocket connection, and starts the
+        background WebSocket handler thread. Automatically reports initial status and registers
+        cleanup handler.
+
+        Args:
+            logger: Logger instance for debugging and error reporting.
+            file_manager: File manager instance (injected dependency).
+            configuration: Configuration object containing runner details.
+                Must have attributes: name, id, token, report_interval.
+
+        Raises:
+            Exception: If API client configuration fails.
+            ConnectionError: If initial status reporting fails.
+        """
 
         # injected objects
         self.logger = logger
@@ -45,7 +76,7 @@ class ServerProxy:
         self.running: bool = True
 
         # HTTP message handing and related
-        self._api_client = self._configure_client_api()  
+        self._api_client = self._configure_client_api()
         self._runner_api = self.create_runner_manager_api()
 
         # Websocket message handling and related
@@ -57,62 +88,76 @@ class ServerProxy:
         self._ws_thread.daemon = True
 
         # initialisation procedure
-        self._report_status(fac.StateEnum.ID)  
+        self._report_status(fac.StateEnum.ID)
         atexit.register(self._report_status, fac.StateEnum.OF)
         self._ws_thread.start()
 
     # ----------------------------------------------------------------------------------------------
-    #  Proxy Interface
+    #  Server Proxy Interface
     # ----------------------------------------------------------------------------------------------
 
     def create_application_registry_api(self):
-        """
-        TODO
+        """Create and return an ApplicationRegistryApi client instance.
+
+        Returns:
+            fyn_api_client.ApplicationRegistryApi: Configured API client for application registry
+            operations.
+
+        Raises:
+            Exception: If API client creation fails.
         """
         try:
-            job_api = fac.ApplicationRegistryApi(self._api_client)      
+            job_api = fac.ApplicationRegistryApi(self._api_client)
         except Exception as e:
             self.logger.error(f"Error while configuring the client api: {str(e)}")
-            raise Exception(f"Error while configuring the client api: {str(e)}")
+            raise Exception(f"Error while configuring the client api: {str(e)}") from e
         return job_api
 
     def create_job_manager_api(self):
-        """
-        TODO
+        """Create and return a JobManagerApi client instance.
+
+        Returns:
+            fyn_api_client.JobManagerApi: Configured API client for job management operations.
+
+        Raises:
+            Exception: If API client creation fails.
         """
         try:
-            job_api = fac.JobManagerApi(self._api_client)      
+            job_api = fac.JobManagerApi(self._api_client)
         except Exception as e:
             self.logger.error(f"Error while configuring the client api: {str(e)}")
-            raise Exception(f"Error while configuring the client api: {str(e)}")
+            raise Exception(f"Error while configuring the client api: {str(e)}") from e
         return job_api
 
-
     def create_runner_manager_api(self):
-        """
-        TODO
+        """Create and return a RunnerManagerApi client instance.
+
+        Returns:
+            fyn_api_client.RunnerManagerApi: Configured API client for runner management operations.
+
+        Raises:
+            Exception: If API client creation fails.
         """
         try:
-            runner_api = fac.RunnerManagerApi(self._api_client)      
+            runner_api = fac.RunnerManagerApi(self._api_client)
         except Exception as e:
             self.logger.error(f"Error while configuring the client api: {str(e)}")
-            raise Exception(f"Error while configuring the client api: {str(e)}")
+            raise Exception(f"Error while configuring the client api: {str(e)}") from e
         return runner_api
 
     def register_observer(self, message_type, call_back):
-        """
-        Register a callback function to be invoked when messages of the specified type are received.
+        """Register a callback function for WebSocket messages of a specific type.
 
-        Each message type can have only one observer at a time. Attempting to register a second
-        observer for the same message type will raise a RuntimeError.
+        Each message type can have only one observer at a time. The callback will be invoked
+        whenever a WebSocket message of the specified type is received.
 
         Args:
-            message_type (str): The type of message to observe
-            call_back (callable): Function to be called when a message of this type is received.
-                                Should accept a message parameter and return an optional response.
+            message_type (str): The type of message to observe.
+            call_back (callable): Function to call when message is received. Should accept a message
+                dict parameter and return an optional response dict.
 
         Raises:
-            RuntimeError: If an observer is already registered for this message type
+            RuntimeError: If an observer is already registered for this message type.
         """
         with self._observers_lock:
             if message_type not in self._observers:
@@ -122,14 +167,13 @@ class ServerProxy:
                 raise RuntimeError(f"Trying to add to existing observer {message_type}")
 
     def deregister_observer(self, message_type):
-        """
-        Remove a previously registered observer for the specified message type.
+        """Remove a previously registered observer for the specified message type.
 
         Args:
-            message_type (str): The type of message for which to remove the observer
+            message_type (str): The type of message for which to remove the observer.
 
         Raises:
-            RuntimeError: If no observer is registered for this message type
+            RuntimeError: If no observer is registered for this message type.
         """
         with self._observers_lock:
             if message_type in self._observers:
@@ -142,20 +186,32 @@ class ServerProxy:
     #  Internal Backend HTTP Reporting Methods
     # ----------------------------------------------------------------------------------------------
 
-    def _report_status(self, status, request_timeout=10):
-        """
-        Report the runner's current status to the server.
-
-        Args:
-            status (fyn_api_client.StateEnum): The status to report to the server. 
-            request_timeout (int, optional): Timeout value in seconds for the HTTP request.
-            Defaults to 10 seconds.
+    def _configure_client_api(self):
+        """Configure and return the base API client with authentication.
 
         Returns:
-            None
+            fyn_api_client.ApiClient: Configured API client with authorization header.
 
         Raises:
-            FIXME: Do we still raise
+            Exception: If API client configuration fails.
+        """
+        try:
+            api_client = fac.ApiClient(self.api_config)
+            api_client.set_default_header("Authorization", f"Token {str(self.token)}")
+        except Exception as e:
+            self.logger.error(f"Error while configuring the client api: {str(e)}")
+            raise Exception(f"Error while configuring the client api: {str(e)}") from e
+        return api_client
+
+    def _report_status(self, status):
+        """Report the runner's current status to the backend server.
+
+        Args:
+            status (fyn_api_client.StateEnum): The status to report to the server.
+            request_timeout (int, optional): HTTP request timeout in seconds. Defaults to 10.
+
+        Raises:
+            ConnectionError: If the HTTP request to report status fails.
         """
 
         self.logger.debug(f"Reporting status {status.value}")
@@ -168,71 +224,19 @@ class ServerProxy:
             self.logger.error(f"Failed to report status '{status}': {str(e)}")
             raise ConnectionError(f"Failed to report status '{status}': {str(e)}") from e
 
-    def _configure_client_api(self):
-        """
-        TODO
-        FIXME: Do we still raise
-        """
-        try:
-            api_client = fac.ApiClient(self.api_config)
-            api_client.set_default_header("Authorization", f"Token {str(self.token)}") 
-        except Exception as e:
-            self.logger.error(f"Error while configuring the client api: {str(e)}")
-            raise Exception(f"Error while configuring the client api: {str(e)}")
-        return api_client
-
-    def _send_handler(self):
-        """
-        Background kernel for thread that processes outgoing messages and handles periodic status
-        reporting.
-
-        This method runs in a separate thread and:
-            1. Waits for new messages to be added to the queue or timeout to occur
-            2. Processes all available messages when notified
-            3. Sends periodic status reports to the server based on report_interval
-
-        The thread continues running until self._running is set to False.
-        """
-
-        next_report_time = time.time() + self.report_interval
-        while self.running:
-            wait_time = max(0.0, next_report_time - time.time())
-            message_added = self._new_send_message.wait(timeout=wait_time)
-
-            # Check and send all messages
-            if message_added:
-                self._new_send_message.clear()
-                while not self._queue.empty():
-                    message = self._queue.get()
-                    try:
-                        self._send_message(message)
-                    except Exception as e:
-                        self.logger.error(f"Error sending message ({message.msg_id}): {e}")
-
-            # Check if we need to report status
-            current_time = time.time()
-            if current_time >= next_report_time:
-                try:
-                    self._report_status('IDLE')
-                except Exception:
-                    pass  # error reported in _report_status, no further action required
-
-                next_report_time = current_time + self.report_interval
-
     # ----------------------------------------------------------------------------------------------
     #  Internal Web Socket Methods
     # ----------------------------------------------------------------------------------------------
 
     def _receive_handler(self):
-        """
-        Background thread handler that manages WebSocket connection to the backend server.
+        """Background thread handler for WebSocket connection management.
 
-        This method runs in a separate daemon thread and is responsible for:
-        1. Establishing and maintaining the WebSocket connection
-        2. Reconnecting if the connection is lost
-        3. Handles any WebSocket errors
+        Runs in a separate daemon thread and handles:
+        - Establishing WebSocket connection to the backend
+        - Automatic reconnection on connection loss
+        - WebSocket error handling and recovery
 
-        The thread continues retrying the connection until self._running is set to False.
+        Continues attempting connection until self.running is set to False.
         """
 
         [protocol, url, port] = self.api_config.host.split(":")
@@ -261,15 +265,14 @@ class ServerProxy:
                 time.sleep(5)
 
     def _handle_ws_message(self, _ws, message_data):
-        """
-        Process incoming WebSocket messages from the server.
+        """Process incoming WebSocket messages and route to appropriate observers.
 
-        This callback is invoked when a message is received over the WebSocket connection.
-        It parses the message, identifies its type, and routes it to the appropriate observer.
+        Parses JSON message data, validates required fields, and invokes the registered observer
+        callback for the message type. Sends response back to server.
 
         Args:
-            _ws(WebSocketApp): The WebSocket instance that received the message
-            message_data(str): The raw message string received from the server
+            _ws (WebSocketApp): The WebSocket instance that received the message.
+            message_data (str): Raw JSON message string from the server.
         """
 
         message = json.loads(message_data)
@@ -316,52 +319,43 @@ class ServerProxy:
             self._ws_error_response(message_id, error_msg)
 
     def _on_ws_open(self, _ws):
-        """
-        Callback invoked when the WebSocket connection is established.
+        """WebSocket connection established callback.
 
         Args:
-            _ws(WebSocketApp): The WebSocket instance that was opened
+            _ws (WebSocketApp): The WebSocket instance that was opened.
         """
         self.logger.info("WebSocket connection established")
         self._ws_connected = True
 
     def _on_ws_close(self, _ws, close_status_code, close_msg):
-        """
-        Callback invoked when the WebSocket connection is closed.
+        """WebSocket connection closed callback.
 
         Args:
-            _ws(WebSocketApp): The WebSocket instance that was closed
-            close_status_code(int): The status code indicating why the connection was closed
-            close_msg(str): The message associated with the close status
+            _ws (WebSocketApp): The WebSocket instance that was closed.
+            close_status_code (int): Status code indicating why connection was closed.
+            close_msg (str): Message associated with the close status.
         """
         self.logger.info(f"WebSocket connection closed: {close_status_code} {close_msg}")
         self._ws_connected = False
 
     def _on_ws_error(self, _ws, error):
-        """
-        Callback invoked when a WebSocket error occurs.
+        """WebSocket error callback.
 
         Args:
-            _ws(WebSocketApp): The WebSocket instance that encountered an error
-            error(Exception): The error that occurred
+            _ws (WebSocketApp): The WebSocket instance that encountered an error.
+            error (Exception): The error that occurred.
         """
         self.logger.error(f"WebSocket error: {error}")
 
     def _ws_error_response(self, message_id, data):
-        """
-        Send an error response back to the server via the WebSocket connection.
+        """Send standardized error response via WebSocket.
 
-        This method constructs and sends a standardized error response message.
+        Constructs and sends an error response message back to the server
+        for the specified message ID.
 
         Args:
-            message_id(str): The ID of the message being responded to
-            data(str): The error message or details to include in the response
-
-        Returns:
-            None
-
-        Raises:
-            Exception: If sending the error response fails
+            message_id (str): ID of the message being responded to.
+            data (str): Error message or details to include in the response.
         """
 
         if self._ws and self._ws_connected:  # Check connection state
