@@ -84,6 +84,7 @@ classDiagram
 
   Job o-- ServerProxy
   Job *-- FileManager
+  Job *-- ActiveJobTracker
 
   ServerProxy *-- APIEndPoint
   ServerProxy *-- Message
@@ -127,6 +128,7 @@ classDiagram
       CompletedProcess _job_result
 
       %% Robber clients
+      ActiveJobTracker _job_activity_tracker
       FileManager file_manager
       Path case_directory
       Logger logger
@@ -135,7 +137,6 @@ classDiagram
       %% OpenAPI client
       JobInfoRunner job
       App application
-      ActiveJobTracker _job_activity_tracker
       ApplicationRegistryApi _app_reg_api
       JobManagerApi _job_api
 

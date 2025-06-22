@@ -27,7 +27,37 @@ from fyn_runner.job_manager.job_activity_tracking import ActiveJobTracker
 from fyn_runner.utilities.file_manager import FileManager
 
 
-class Job:  # this is the SimulationMonitor (in its own thread)
+class Job:
+    """Manages the complete lifecycle of a remote job execution.
+
+    The Job class orchestrates the full pipeline for executing applications/simulations remotely,
+    including resource fetching, execution, and result uploading. It handles communication with a
+    backend server through various API clients and manages local file operations through a file
+    manager.
+
+    The class implements a three-phase execution model:
+    1. Setup: Creates working directory and fetches application files and resources
+    2. Execution: Runs the application with proper logging and monitoring
+    3. Cleanup: Uploads results and reports final status to the backend
+
+    Note:
+        The 'launch' operation is expected to be executed in its own thread since it
+        is a blocking operation that can take significant time to complete. The class
+        maintains job status throughout execution and reports progress to the backend.
+
+    Warning:
+        Currently only Python scripts are fully supported for application execution.
+        Other application types (shell scripts, binaries) will raise NotImplementedError.
+
+    Todo:
+        - Implement WebSocket listeners for real-time commands (terminate, pause, etc.)
+        - Add support for shell scripts and binary applications
+        - Implement non-blocking execution with progress reporting
+        - Expand result upload to include all output files, not just logs
+        - Add job pause/resume functionality
+        - Better error handling
+    """
+
     def __init__(self, job: JobInfoRunner, server_proxy: ServerProxy, file_manager: FileManager,
                  logger: Logger, activity_tracker: ActiveJobTracker):
 
@@ -48,6 +78,17 @@ class Job:  # this is the SimulationMonitor (in its own thread)
         self._job_api = server_proxy.create_job_manager_api()
 
     def launch(self):
+        """ Function to launch the application, this triggers the full 'pipeline' execution of the
+        job, including fetching resources, running the application, and uploading results.
+
+        Raises:
+            Exception: If anything goes wrong during the execution of the job.
+
+        Note:
+            1. Job status changed to 'Runner Exception' if an exception was raised.
+            2. Its expected that the Job is fully initialised when the function is called.
+        """
+
         try:
             self._setup()
             self._run()
@@ -58,9 +99,14 @@ class Job:  # this is the SimulationMonitor (in its own thread)
             self._update_status(StatusEnum.FE)
 
     def _setup(self):
+        """ Control function delegating to various setup operations to other functions to facilitate
+        application setup (i.e. pre-execution).
+
+        Note:
+            1. Job status changed to 'Preparing'
+            2. Do not catch in this function, catch either in launch or in the sub functions.
         """
-        Don't catch in this function  -> catch either in launch or in the sub fuctions.
-        """
+
         self.logger.info(f"Job {self.job.id} is in setup")
         self._update_status(StatusEnum.PR)
         self.application = self._app_reg_api.application_registry_retrieve(self.job.application_id)
@@ -75,9 +121,17 @@ class Job:  # this is the SimulationMonitor (in its own thread)
         self.logger.warning("Attached listeners to be implemented")
 
     def _run(self):
+        """ Control function delegating to a further execution functions to facilitate application
+        execution.
+
+        Note:
+            1. Do not catch in this function, catch either in launch or in the sub functions.
+
+        TODO:
+            Presently the run application is blocking, it is desired to rather have it non-blocking
+            and have the Job report on progress.
         """
-        Don't catch in this function -> catch either in launch or in the sub functions.
-        """
+
         # 1. launch job
         self.logger.info(f"Job {self.job.id} is in run")
         self._run_application()
@@ -86,8 +140,12 @@ class Job:  # this is the SimulationMonitor (in its own thread)
         self.logger.warning("Switch to loop and report progress")
 
     def _clean_up(self):
-        """
-        Don't catch in this function -> catch either in launch or in the sub functions.
+        """ Control function delegating to various cleanup operations to other functions to
+        facilitate post execution uploading and reporting (i.e. post-execution).
+
+        Note:
+            1. Job status changed to 'Clean Up'
+            2. Do not catch in this function, catch either in launch or in the sub functions.
         """
 
         self.logger.info(f"Job {self.job.id} is in clean up")
@@ -107,7 +165,12 @@ class Job:  # this is the SimulationMonitor (in its own thread)
     # ----------------------------------------------------------------------------------------------
 
     def _setup_local_simulation_directory(self):
-        """ Create a simulation directory. """
+        """Create a simulation directory, using the file manager, reports the local directory to the
+        backend.
+
+        Raises:
+            RuntimeError: If it fails to either create a local directory or report the status.
+        """
 
         self.logger.debug(f"Job {self.job.id}: local directory creation")
         try:
@@ -119,15 +182,26 @@ class Job:  # this is the SimulationMonitor (in its own thread)
             raise RuntimeError(f"Could complete a simulation directory setup: {e}")
 
     def _fetching_simulation_resources(self):
-        """  """
+        """Fetches both the application file and all related job resources for the application file
+        and places them in the Job's working directory.
+
+        Raises:
+            RuntimeError: If it fails to fetch the application binary/script.
+            RuntimeError: If it fails to fetch a job resource.
+
+        Note:
+            1. Job status changed to 'Fetching Resources'
+        """
+
         self.logger.debug(f"Job {self.job.id}: fetching program and other remote resources")
         self._update_status(StatusEnum.FR)
 
+        # 1. Fetch application
         try:
             file = self._app_reg_api.application_registry_program_retrieve(self.job.application_id)
             self._handle_application(file)
         except Exception as e:
-            raise Exception(f"Failed to fetch application: {e}")
+            raise RuntimeError(f"Failed to fetch application: {e}")
 
         # 2. Fetch other files
         try:
@@ -138,9 +212,14 @@ class Job:  # this is the SimulationMonitor (in its own thread)
                 with open(file_path, 'wb') as f:
                     f.write(file_content)
         except Exception as e:
-            raise Exception(f"Failed to fetch job files: {e}")
+            raise RuntimeError(f"Failed to fetch job files: {e}")
 
     def _handle_application(self, file):
+        """Function to interpret the received application file and save it to the working directory.
+
+        Raises:
+            NotImplementedError: Any thing other than a python script is not yet implemented.
+        """
 
         match self.application.type:
             case TypeEnum.PYTHON:
@@ -157,32 +236,38 @@ class Job:  # this is the SimulationMonitor (in its own thread)
             case _:
                 raise NotImplementedError("Undefined binary case type.")
 
-    def _download_resource_file(self, resource_id: str) -> bytes:
-        """Download the actual file content for a resource"""
+    def _download_resource_file(self, resource_id: str) -> bytearray:
+        """Download the actual resource/file contents from the backend and returns the byte array.
+
+        Args:
+            resource_id(str): The UUID of the resource to download (should belong to the job).
+
+        Return:
+            Byte array of the fetch resource
+
+        Raises:
+            RuntimeError: Re-raises any backend fetch into a runtime error.
+        """
         try:
-            # Option 1: If your auto-generated client has the download method
             return self._job_api.job_manager_resources_runner_download_retrieve(resource_id)
-        except AttributeError:
-            # Option 2: Direct HTTP request to download endpoint
-            import requests
-
-            # Get the base URL and token from your server proxy
-            base_url = self.server_proxy.base_url  # Adjust based on your ServerProxy implementation
-            token = self.server_proxy.token  # Adjust based on your ServerProxy implementation
-
-            download_url = f"{base_url}/api/job_manager/resources/runner/{resource_id}/download/"
-            headers = {'Authorization': f'Token {token}'}
-
-            response = requests.get(download_url, headers=headers)
-            response.raise_for_status()
-
-            return response.content
+        except Exception as e:
+            raise RuntimeError(e)
 
     # ----------------------------------------------------------------------------------------------
     #  Run/Execution Functions
     # ----------------------------------------------------------------------------------------------
 
     def _run_application(self):
+        """The actual execution of the application. Will block until the execution is over. The
+        application logs are piped into an job_id_out.log and job_id_err.log file.
+
+        Raises:
+            RuntimeError: If the runner fails to launch the application (not if the application
+                crashes).
+
+        Note:
+            1. Job status changed to 'Running'
+        """
 
         self._update_status(StatusEnum.RN)
         try:
@@ -212,6 +297,20 @@ class Job:  # this is the SimulationMonitor (in its own thread)
     # ----------------------------------------------------------------------------------------------
 
     def _upload_application_results(self):
+        """Uploads outputted application files and logs.
+
+        Raises:
+            RuntimeError: If the runner fails to launch the application (not if the application
+                crashes).
+
+        Notes:
+            1. Job status is updated to 'Uploading Resources'.
+
+        TODO:
+            1. Currently only log files are updated, but a full system of file collection and
+               uploading will be need.
+        """
+
         self._update_status(StatusEnum.UR)
         try:
             for logs in ["_out.log", "_err.log"]:
@@ -228,6 +327,14 @@ class Job:  # this is the SimulationMonitor (in its own thread)
             raise RuntimeError(f"Could complete job resource upload: {e}")
 
     def _report_application_result(self):
+        """Reports the final state of the run application (determined by the exit code).
+
+        Returns:
+            None
+
+        Notes:
+            1. Job status is updated to either 'Success' or 'Failed' based on the exit code.
+        """
 
         jir = PatchedJobInfoRunnerRequest(exit_code=self._job_result.returncode)
         self._job_api.job_manager_runner_partial_update(self.job.id,
@@ -243,21 +350,31 @@ class Job:  # this is the SimulationMonitor (in its own thread)
     # ----------------------------------------------------------------------------------------------
 
     def _update_status(self, status):
+        """Sets the local job status and reports the status to the backend server using the Job API
+        client.
+
+        Args:
+            status(StatusEnum): The new status the job must be placed into.
+
+        Returns:
+            None
+
+        Raises:
+            Exception: If the runner failed to report the status to the backend. If the job fails to
+            report the local status is not updated.
+        """
 
         try:
-            self.job.status = status
-
-            # Report status to server
             jir = PatchedJobInfoRunnerRequest(status=status)
             self._job_api.job_manager_runner_partial_update(self.job.id,
                                                             patched_job_info_runner_request=jir)
-
-            # Update local status
-            if self._job_activity_tracker.is_tracked(self.job.id):
-                self._job_activity_tracker.update_job_status(self.job.id, jir.status)
-            else:
-                self._job_activity_tracker.add_job(self.job)
-
             self.logger.debug(f"Job {self.job.id} reported status: {status.value}")
         except Exception as e:
             self.logger.error(f"Job {self.job.id} failed to report status: {e}")
+            return
+
+        self.job.status = status
+        if self._job_activity_tracker.is_tracked(self.job.id):
+            self._job_activity_tracker.update_job_status(self.job.id, jir.status)
+        else:
+            self._job_activity_tracker.add_job(self.job)
