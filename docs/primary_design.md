@@ -127,18 +127,18 @@ classDiagram
       CompletedProcess _job_result
 
       %% Robber clients
-      FileManager file_manager 
+      FileManager file_manager
       Path case_directory
       Logger logger
       ServerProxy server_proxy
 
       %% OpenAPI client
       JobInfoRunner job
-      App application 
+      App application
       ActiveJobTracker _job_activity_tracker
-      ApplicationRegistryApi _app_reg_api 
-      JobManagerApi _job_api 
-      
+      ApplicationRegistryApi _app_reg_api
+      JobManagerApi _job_api
+
       %% Methods
       __init__()
       launch()
@@ -153,7 +153,7 @@ classDiagram
       _fetching_simulation_resources()
       _handle_application(file)
       _download_resource_file(UUID)
-     
+
       %% Run Functions
       _run_application()
 

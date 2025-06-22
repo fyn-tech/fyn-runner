@@ -30,7 +30,7 @@ from fyn_runner.utilities.file_manager import FileManager
 class Job:  # this is the SimulationMonitor (in its own thread)
     def __init__(self, job: JobInfoRunner, server_proxy: ServerProxy, file_manager: FileManager,
                  logger: Logger, activity_tracker: ActiveJobTracker):
-        
+
         # Python object attributes
         self._job_result: subprocess.CompletedProcess = None
 
