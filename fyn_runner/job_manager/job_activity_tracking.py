@@ -273,11 +273,20 @@ class ActiveJobTracker:
         Returns:
             dict: Dictionary containing 'active', 'completed', and 'total' job counts.
         """
-
         with self._lock:
             return {
                 'active': len(self._active_jobs),
                 'completed': len(self._completed_jobs),
-        """
+                'total': len(self._active_jobs) + len(self._completed_jobs)
+            }
 
+    def is_tracked(self, job_id):
+        """Check if the job is being tracked in either active or completed collections.
+
+        Args:
+            job_id: Unique identifier of the job to check.
+
+        Returns:
+            bool: True if the job is being tracked, False otherwise.
+        """
         return self.is_active(job_id) or self.is_completed(job_id)
