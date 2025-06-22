@@ -82,8 +82,8 @@ classDiagram
   JobManager *--ServerProxy
   JobManager *-- FileManager
 
-  Job *-- JobStatus
   Job o-- ServerProxy
+  Job *-- FileManager
 
   ServerProxy *-- APIEndPoint
   ServerProxy *-- Message
@@ -122,37 +122,48 @@ classDiagram
 
     class Job {
       %% Attributes:
-      UUID id
-      JobStatus status
-      Path case_path
 
+      %% Python object attributes
+      CompletedProcess _job_result
+
+      %% Robber clients
+      FileManager file_manager 
+      Path case_directory
+      Logger logger
       ServerProxy server_proxy
-      thread job_monitor
 
-      int _pid
-      int _exit_code
+      %% OpenAPI client
+      JobInfoRunner job
+      App application 
+      ActiveJobTracker _job_activity_tracker
+      ApplicationRegistryApi _app_reg_api 
+      JobManagerApi _job_api 
+      
+      %% Methods
+      __init__()
+      launch()
 
-      %% Methods:
-      launch(config_file_path) -> bool
-      terminate() -> bool
+      %% Main Control Functions
+      _setup()
+      _run()
+      _clean_up()
 
-      %% launching
-      _create_folder_structure() -> bool
-      _copy_input_files() -> bool
-      _start_execution() -> bool
-      _start_monitor_thread() -> thread
+      %% Setup Functions
+      _setup_local_simulation_directory()
+      _fetching_simulation_resources()
+      _handle_application(file)
+      _download_resource_file(UUID)
+     
+      %% Run Functions
+      _run_application()
 
-      %% API
-      _handle_pause()
-      _handle_termination()
-      _fetch_case_files()
-      _report_job_results()
-      _report_job_progress()
-      _report_status_change()
-    }
+      %% Clean Up Functions
+      _upload_application_results()
+      _report_application_result()
 
-    class JobStatus {
-      <<enum>>
+      %% Misc
+      _update_status(StatusEnum)
+
     }
   }
 

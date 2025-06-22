@@ -30,16 +30,22 @@ from fyn_runner.utilities.file_manager import FileManager
 class Job:  # this is the SimulationMonitor (in its own thread)
     def __init__(self, job: JobInfoRunner, server_proxy: ServerProxy, file_manager: FileManager,
                  logger: Logger, activity_tracker: ActiveJobTracker):
+        
+        # Python object attributes
+        self._job_result: subprocess.CompletedProcess = None
+
+        # Runner object attributes
         self.file_manager: FileManager = file_manager
         self.case_directory: Path
-        self.job: JobInfoRunner = job
-        self.application: App
         self.logger: Logger = logger
         self.server_proxy: ServerProxy = server_proxy
+
+        # OpenAPI client attributes
+        self.application: App = None
+        self.job: JobInfoRunner = job
+        self._job_activity_tracker: ActiveJobTracker = activity_tracker
         self._app_reg_api = server_proxy.create_application_registry_api()
         self._job_api = server_proxy.create_job_manager_api()
-        self._job_activity_tracker: ActiveJobTracker = activity_tracker
-        self._job_result: subprocess.CompletedProcess = None
 
     def launch(self):
         try:
@@ -176,22 +182,6 @@ class Job:  # this is the SimulationMonitor (in its own thread)
     #  Run/Execution Functions
     # ----------------------------------------------------------------------------------------------
 
-    def _upload_application_results(self):
-        self._update_status(StatusEnum.UR)
-        try:
-            for logs in ["_out.log", "_err.log"]:
-                file_path = self.case_directory / (str(self.job.id) + logs)
-                with open(file_path, 'rb') as f:
-                    file_content = f.read()
-                self._job_api.job_manager_resources_runner_create(
-                    str(self.job.id),
-                    file_content,
-                    resource_type=ResourceTypeEnum.LOG,
-                    description="log file",
-                    original_file_path=str(file_path))
-        except Exception as e:
-            raise RuntimeError(f"Could complete job resource upload: {e}")
-
     def _run_application(self):
 
         self._update_status(StatusEnum.RN)
@@ -220,6 +210,22 @@ class Job:  # this is the SimulationMonitor (in its own thread)
     # ----------------------------------------------------------------------------------------------
     #  Clean up functions Functions
     # ----------------------------------------------------------------------------------------------
+
+    def _upload_application_results(self):
+        self._update_status(StatusEnum.UR)
+        try:
+            for logs in ["_out.log", "_err.log"]:
+                file_path = self.case_directory / (str(self.job.id) + logs)
+                with open(file_path, 'rb') as f:
+                    file_content = f.read()
+                self._job_api.job_manager_resources_runner_create(
+                    str(self.job.id),
+                    file_content,
+                    resource_type=ResourceTypeEnum.LOG,
+                    description="log file",
+                    original_file_path=str(file_path))
+        except Exception as e:
+            raise RuntimeError(f"Could complete job resource upload: {e}")
 
     def _report_application_result(self):
 
