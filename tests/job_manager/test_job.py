@@ -11,7 +11,8 @@
 # You should have received a copy of the GNU General Public License along with this program. If not,
 #  see <https://www.gnu.org/licenses/>.
 
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock, patch, mock_open, call
+from pathlib import Path
 import pytest
 
 from fyn_runner.job_manager.job import Job
@@ -32,6 +33,9 @@ class TestJob:
         job_info_runner = MagicMock()
         job_info_runner.id = "test-job-123"
         job_info_runner.application_id = "test-app-123"
+        job_info_runner.executable = "python"
+        job_info_runner.command_line_args = ["script.py", "--arg1", "value1"]
+        job_info_runner.resources = ["resource-1", "resource-2"]
         return job_info_runner
 
     @pytest.fixture
@@ -273,3 +277,583 @@ class TestJob:
             mock_report_application_result.assert_not_called()
 
         mock_logger.info.assert_called_once_with(f"Job {mock_job_info_runner.id} is in clean up")
+
+    # ----------------------------------------------------------------------------------------------
+    #  Setup Function Tests
+    # ----------------------------------------------------------------------------------------------
+
+    def test_setup_local_simulation_directory_success(
+            self,
+            mock_job_info_runner,
+            mock_server_proxy,
+            mock_file_manager,
+            mock_logger,
+            mock_active_job_tracker):
+        """Test successful creation of local simulation directory."""
+        job = Job(mock_job_info_runner, mock_server_proxy, mock_file_manager, mock_logger,
+                  mock_active_job_tracker)
+        
+        mock_case_dir = Path(f"/mock/simulations/{mock_job_info_runner.id}")
+        mock_file_manager.request_simulation_directory.return_value = mock_case_dir
+        
+        with patch('fyn_runner.job_manager.job.PatchedJobInfoRunnerRequest') as mock_request:
+            job._setup_local_simulation_directory()
+            
+            # Verify directory creation
+            mock_file_manager.request_simulation_directory.assert_called_once_with(
+                mock_job_info_runner.id
+            )
+            
+            # Verify API update
+            mock_request.assert_called_once_with(working_directory=str(mock_case_dir))
+            job._job_api.job_manager_runner_partial_update.assert_called_once_with(
+                mock_job_info_runner.id,
+                patched_job_info_runner_request=mock_request.return_value
+            )
+            
+            # Verify case_directory is set
+            assert job.case_directory == mock_case_dir
+            
+        mock_logger.debug.assert_called_once_with(
+            f"Job {mock_job_info_runner.id}: local directory creation"
+        )
+
+    def test_setup_local_simulation_directory_failure(
+            self,
+            mock_job_info_runner,
+            mock_server_proxy,
+            mock_file_manager,
+            mock_logger,
+            mock_active_job_tracker):
+        """Test failure when creating local simulation directory."""
+        job = Job(mock_job_info_runner, mock_server_proxy, mock_file_manager, mock_logger,
+                  mock_active_job_tracker)
+        
+        mock_file_manager.request_simulation_directory.side_effect = Exception("Directory error")
+        
+        with pytest.raises(RuntimeError, match="Could complete a simulation directory setup"):
+            job._setup_local_simulation_directory()
+
+    def test_fetching_simulation_resources_success(
+            self,
+            mock_job_info_runner,
+            mock_server_proxy,
+            mock_file_manager,
+            mock_logger,
+            mock_active_job_tracker):
+        """Test successful fetching of simulation resources."""
+        job = Job(mock_job_info_runner, mock_server_proxy, mock_file_manager, mock_logger,
+                  mock_active_job_tracker)
+        job.case_directory = Path(f"/mock/simulations/{mock_job_info_runner.id}")
+        
+        # Mock the application file
+        mock_app_file = b"print('Hello World')"
+        job._app_reg_api.application_registry_program_retrieve.return_value = mock_app_file
+        
+        # Mock resources
+        mock_resource_1 = MagicMock()
+        mock_resource_1.id = "resource-1"
+        mock_resource_1.filename = "data1.txt"
+        
+        mock_resource_2 = MagicMock()
+        mock_resource_2.id = "resource-2"
+        mock_resource_2.filename = "data2.txt"
+        
+        job._job_api.job_manager_resources_runner_retrieve.side_effect = [
+            mock_resource_1, mock_resource_2
+        ]
+        
+        with (patch.object(job, '_update_status') as mock_update_status,
+              patch.object(job, '_handle_application') as mock_handle_app,
+              patch.object(job, '_download_resource_file') as mock_download,
+              patch('fyn_runner.job_manager.job.StatusEnum') as mock_status_enum,
+              patch('builtins.open', mock_open()) as mock_file):
+            
+            mock_status_enum.FR = "FETCHING_RESOURCES"
+            mock_download.side_effect = [b"resource1 content", b"resource2 content"]
+            
+            job._fetching_simulation_resources()
+            
+            # Verify status update
+            mock_update_status.assert_called_once_with(mock_status_enum.FR)
+            
+            # Verify application fetch
+            job._app_reg_api.application_registry_program_retrieve.assert_called_once_with(
+                mock_job_info_runner.application_id
+            )
+            mock_handle_app.assert_called_once_with(mock_app_file)
+            
+            # Verify resource fetches
+            assert job._job_api.job_manager_resources_runner_retrieve.call_count == 2
+            assert mock_download.call_count == 2
+            
+            # Verify files were written
+            expected_calls = [
+                call(job.case_directory / "data1.txt", 'wb'),
+                call(job.case_directory / "data2.txt", 'wb')
+            ]
+            mock_file.assert_has_calls(expected_calls, any_order=True)
+
+    def test_fetching_simulation_resources_app_failure(
+            self,
+            mock_job_info_runner,
+            mock_server_proxy,
+            mock_file_manager,
+            mock_logger,
+            mock_active_job_tracker):
+        """Test failure when fetching application file."""
+        job = Job(mock_job_info_runner, mock_server_proxy, mock_file_manager, mock_logger,
+                  mock_active_job_tracker)
+        
+        job._app_reg_api.application_registry_program_retrieve.side_effect = Exception("API error")
+        
+        with (patch.object(job, '_update_status'),
+              patch('fyn_runner.job_manager.job.StatusEnum')):
+            
+            with pytest.raises(RuntimeError, match="Failed to fetch application"):
+                job._fetching_simulation_resources()
+
+    def test_fetching_simulation_resources_resource_failure(
+            self,
+            mock_job_info_runner,
+            mock_server_proxy,
+            mock_file_manager,
+            mock_logger,
+            mock_active_job_tracker):
+        """Test failure when fetching job resources."""
+        job = Job(mock_job_info_runner, mock_server_proxy, mock_file_manager, mock_logger,
+                  mock_active_job_tracker)
+        job.case_directory = Path(f"/mock/simulations/{mock_job_info_runner.id}")
+        
+        mock_app_file = b"print('Hello World')"
+        job._app_reg_api.application_registry_program_retrieve.return_value = mock_app_file
+        job._job_api.job_manager_resources_runner_retrieve.side_effect = Exception("Resource error")
+        
+        with (patch.object(job, '_update_status'),
+              patch.object(job, '_handle_application'),
+              patch('fyn_runner.job_manager.job.StatusEnum')):
+            
+            with pytest.raises(RuntimeError, match="Failed to fetch job files"):
+                job._fetching_simulation_resources()
+
+    def test_handle_application_python(
+            self,
+            mock_job_info_runner,
+            mock_server_proxy,
+            mock_file_manager,
+            mock_logger,
+            mock_active_job_tracker):
+        """Test handling of Python application type."""
+        job = Job(mock_job_info_runner, mock_server_proxy, mock_file_manager, mock_logger,
+                  mock_active_job_tracker)
+        job.case_directory = Path(f"/mock/simulations/{mock_job_info_runner.id}")
+        job.application = MagicMock()
+        job.application.name = "test_app"
+        
+        file_content = b"print('Hello World')"
+        
+        with (patch('fyn_runner.job_manager.job.TypeEnum') as mock_type_enum,
+              patch('builtins.open', mock_open()) as mock_file):
+            
+            mock_type_enum.PYTHON = "PYTHON"
+            job.application.type = mock_type_enum.PYTHON
+            
+            job._handle_application(file_content)
+            
+            # Verify file was written
+            mock_file.assert_called_once_with(
+                job.case_directory / "test_app.py", "w"
+            )
+            mock_file().write.assert_called_once_with("print('Hello World')")
+
+    def test_handle_application_not_implemented(
+            self,
+            mock_job_info_runner,
+            mock_server_proxy,
+            mock_file_manager,
+            mock_logger,
+            mock_active_job_tracker):
+        """Test handling of non-implemented application types."""
+        job = Job(mock_job_info_runner, mock_server_proxy, mock_file_manager, mock_logger,
+                  mock_active_job_tracker)
+        job.application = MagicMock()
+        
+        with patch('fyn_runner.job_manager.job.TypeEnum') as mock_type_enum:
+            # Test each unimplemented type
+            unimplemented_types = [
+                (mock_type_enum.SHELL, "Shell script"),
+                (mock_type_enum.LINUX_BINARY, "Linux binary"),
+                (mock_type_enum.WINDOWS_BINARY, "Windows binary"),
+                (mock_type_enum.UNKNOWN, "Cannot process")
+            ]
+            
+            for app_type, expected_msg in unimplemented_types:
+                job.application.type = app_type
+                with pytest.raises(NotImplementedError, match=expected_msg):
+                    job._handle_application(b"dummy content")
+
+    def test_download_resource_file_success(
+            self,
+            mock_job_info_runner,
+            mock_server_proxy,
+            mock_file_manager,
+            mock_logger,
+            mock_active_job_tracker):
+        """Test successful resource file download."""
+        job = Job(mock_job_info_runner, mock_server_proxy, mock_file_manager, mock_logger,
+                  mock_active_job_tracker)
+        
+        expected_content = b"resource content"
+        job._job_api.job_manager_resources_runner_download_retrieve.return_value = expected_content
+        
+        result = job._download_resource_file("resource-123")
+        
+        assert result == expected_content
+        job._job_api.job_manager_resources_runner_download_retrieve.assert_called_once_with(
+            "resource-123"
+        )
+
+    def test_download_resource_file_failure(
+            self,
+            mock_job_info_runner,
+            mock_server_proxy,
+            mock_file_manager,
+            mock_logger,
+            mock_active_job_tracker):
+        """Test failure when downloading resource file."""
+        job = Job(mock_job_info_runner, mock_server_proxy, mock_file_manager, mock_logger,
+                  mock_active_job_tracker)
+        
+        job._job_api.job_manager_resources_runner_download_retrieve.side_effect = Exception(
+            "Download failed"
+        )
+        
+        with pytest.raises(RuntimeError, match="Download failed"):
+            job._download_resource_file("resource-123")
+
+    # ----------------------------------------------------------------------------------------------
+    #  Run Function Tests
+    # ----------------------------------------------------------------------------------------------
+
+    def test_run_application_success(
+            self,
+            mock_job_info_runner,
+            mock_server_proxy,
+            mock_file_manager,
+            mock_logger,
+            mock_active_job_tracker):
+        """Test successful application execution."""
+        job = Job(mock_job_info_runner, mock_server_proxy, mock_file_manager, mock_logger,
+                  mock_active_job_tracker)
+        job.case_directory = Path(f"/mock/simulations/{mock_job_info_runner.id}")
+        
+        mock_result = MagicMock()
+        mock_result.returncode = 0
+        
+        with (patch.object(job, '_update_status') as mock_update_status,
+              patch('fyn_runner.job_manager.job.StatusEnum') as mock_status_enum,
+              patch('subprocess.run', return_value=mock_result) as mock_subprocess,
+              patch('builtins.open', mock_open()) as mock_file):
+            
+            mock_status_enum.RN = "RUNNING"
+            
+            job._run_application()
+            
+            # Verify status update
+            mock_update_status.assert_called_once_with(mock_status_enum.RN)
+            
+            # Verify subprocess was called correctly
+            expected_command = "python script.py --arg1 value1"
+            mock_subprocess.assert_called_once_with(
+                expected_command,
+                stdout=mock_file.return_value,
+                stderr=mock_file.return_value,
+                text=True,
+                bufsize=1,
+                cwd=job.case_directory,
+                shell=True
+            )
+            
+            # Verify log files were opened
+            expected_log_calls = [
+                call(job.case_directory / 
+                     f"{mock_job_info_runner.id}_out.log", "w", encoding="utf-8"),
+                call(job.case_directory / 
+                     f"{mock_job_info_runner.id}_err.log", "w", encoding="utf-8")
+            ]
+            mock_file.assert_has_calls(expected_log_calls, any_order=True)
+            
+            # Verify result was stored
+            assert job._job_result == mock_result
+            
+            # Verify logging
+            mock_logger.info.assert_any_call(
+                f"Launching job {mock_job_info_runner.id}: {expected_command}"
+            )
+            mock_logger.info.assert_any_call(f"Job {mock_job_info_runner.id} completed.")
+
+    def test_run_application_failure(
+            self,
+            mock_job_info_runner,
+            mock_server_proxy,
+            mock_file_manager,
+            mock_logger,
+            mock_active_job_tracker):
+        """Test failure during application execution."""
+        job = Job(mock_job_info_runner, mock_server_proxy, mock_file_manager, mock_logger,
+                  mock_active_job_tracker)
+        job.case_directory = Path(f"/mock/simulations/{mock_job_info_runner.id}")
+        
+        with (patch.object(job, '_update_status'),
+              patch('fyn_runner.job_manager.job.StatusEnum'),
+              patch('subprocess.run', side_effect=Exception("Subprocess failed")),
+              patch('builtins.open', mock_open())):
+            
+            with pytest.raises(RuntimeError, match="Exception while executing application"):
+                job._run_application()
+
+    # ----------------------------------------------------------------------------------------------
+    #  Clean Up Function Tests
+    # ----------------------------------------------------------------------------------------------
+
+    def test_upload_application_results_success(
+            self,
+            mock_job_info_runner,
+            mock_server_proxy,
+            mock_file_manager,
+            mock_logger,
+            mock_active_job_tracker):
+        """Test successful upload of application results."""
+        job = Job(mock_job_info_runner, mock_server_proxy, mock_file_manager, mock_logger,
+                  mock_active_job_tracker)
+        job.case_directory = Path(f"/mock/simulations/{mock_job_info_runner.id}")
+        
+        # Mock file contents
+        out_log_content = b"Output log content"
+        err_log_content = b"Error log content"
+        
+        with (patch.object(job, '_update_status') as mock_update_status,
+              patch('fyn_runner.job_manager.job.StatusEnum') as mock_status_enum,
+              patch('fyn_runner.job_manager.job.ResourceTypeEnum') as mock_resource_enum,
+              patch('builtins.open', mock_open()) as mock_file):
+            
+            mock_status_enum.UR = "UPLOADING_RESOURCES"
+            mock_resource_enum.LOG = "LOG"
+            
+            # Set up different return values for each file
+            mock_file.return_value.read.side_effect = [out_log_content, err_log_content]
+            
+            job._upload_application_results()
+            
+            # Verify status update
+            mock_update_status.assert_called_once_with(mock_status_enum.UR)
+            
+            # Verify files were read
+            expected_file_calls = [
+                call(job.case_directory / f"{mock_job_info_runner.id}_out.log", 'rb'),
+                call(job.case_directory / f"{mock_job_info_runner.id}_err.log", 'rb')
+            ]
+            mock_file.assert_has_calls(expected_file_calls, any_order=True)
+            
+            # Verify API calls
+            assert job._job_api.job_manager_resources_runner_create.call_count == 2
+            
+            # Verify the content of API calls
+            api_calls = job._job_api.job_manager_resources_runner_create.call_args_list
+            for call_args in api_calls:
+                assert call_args[0][0] == mock_job_info_runner.id  # job ID
+                assert call_args[1]['resource_type'] == mock_resource_enum.LOG
+                assert call_args[1]['description'] == "log file"
+
+    def test_upload_application_results_failure(
+            self,
+            mock_job_info_runner,
+            mock_server_proxy,
+            mock_file_manager,
+            mock_logger,
+            mock_active_job_tracker):
+        """Test failure when uploading application results."""
+        job = Job(mock_job_info_runner, mock_server_proxy, mock_file_manager, mock_logger,
+                  mock_active_job_tracker)
+        job.case_directory = Path(f"/mock/simulations/{mock_job_info_runner.id}")
+        
+        with (patch.object(job, '_update_status'),
+              patch('fyn_runner.job_manager.job.StatusEnum'),
+              patch('builtins.open', side_effect=Exception("File error"))):
+            
+            with pytest.raises(RuntimeError, match="Could complete job resource upload"):
+                job._upload_application_results()
+
+    def test_report_application_result_success(
+            self,
+            mock_job_info_runner,
+            mock_server_proxy,
+            mock_file_manager,
+            mock_logger,
+            mock_active_job_tracker):
+        """Test successful reporting of application result with exit code 0."""
+        job = Job(mock_job_info_runner, mock_server_proxy, mock_file_manager, mock_logger,
+                  mock_active_job_tracker)
+        job._job_result = MagicMock()
+        job._job_result.returncode = 0
+        
+        with (patch.object(job, '_update_status') as mock_update_status,
+              patch('fyn_runner.job_manager.job.StatusEnum') as mock_status_enum,
+              patch('fyn_runner.job_manager.job.PatchedJobInfoRunnerRequest') as mock_request):
+            
+            mock_status_enum.SD = "SUCCEEDED"
+            
+            job._report_application_result()
+            
+            # Verify API call
+            mock_request.assert_called_once_with(exit_code=0)
+            job._job_api.job_manager_runner_partial_update.assert_called_once_with(
+                mock_job_info_runner.id,
+                patched_job_info_runner_request=mock_request.return_value
+            )
+            
+            # Verify status update for success
+            mock_update_status.assert_called_once_with(mock_status_enum.SD)
+
+    def test_report_application_result_failure(
+            self,
+            mock_job_info_runner,
+            mock_server_proxy,
+            mock_file_manager,
+            mock_logger,
+            mock_active_job_tracker):
+        """Test reporting of application result with non-zero exit code."""
+        job = Job(mock_job_info_runner, mock_server_proxy, mock_file_manager, mock_logger,
+                  mock_active_job_tracker)
+        job._job_result = MagicMock()
+        job._job_result.returncode = 1
+        
+        with (patch.object(job, '_update_status') as mock_update_status,
+              patch('fyn_runner.job_manager.job.StatusEnum') as mock_status_enum,
+              patch('fyn_runner.job_manager.job.PatchedJobInfoRunnerRequest') as mock_request):
+            
+            mock_status_enum.FD = "FAILED"
+            
+            job._report_application_result()
+            
+            # Verify API call
+            mock_request.assert_called_once_with(exit_code=1)
+            job._job_api.job_manager_runner_partial_update.assert_called_once_with(
+                mock_job_info_runner.id,
+                patched_job_info_runner_request=mock_request.return_value
+            )
+            
+            # Verify status update for failure
+            mock_update_status.assert_called_once_with(mock_status_enum.FD)
+
+    # ----------------------------------------------------------------------------------------------
+    #  Misc Function Tests
+    # ----------------------------------------------------------------------------------------------
+
+    def test_update_status_success_tracked(
+            self,
+            mock_job_info_runner,
+            mock_server_proxy,
+            mock_file_manager,
+            mock_logger,
+            mock_active_job_tracker):
+        """Test successful status update when job is tracked."""
+        job = Job(mock_job_info_runner, mock_server_proxy, mock_file_manager, mock_logger,
+                  mock_active_job_tracker)
+        
+        mock_active_job_tracker.is_tracked.return_value = True
+        
+        with (patch('fyn_runner.job_manager.job.StatusEnum') as mock_status_enum,
+              patch('fyn_runner.job_manager.job.PatchedJobInfoRunnerRequest') as mock_request):
+            
+            mock_status = MagicMock()
+            mock_status.value = "RUNNING"
+            mock_status_enum.RN = mock_status
+            
+            job._update_status(mock_status_enum.RN)
+            
+            # Verify API call
+            mock_request.assert_called_once_with(status=mock_status_enum.RN)
+            job._job_api.job_manager_runner_partial_update.assert_called_once_with(
+                mock_job_info_runner.id,
+                patched_job_info_runner_request=mock_request.return_value
+            )
+            
+            # Verify local status update
+            assert job.job.status == mock_status_enum.RN
+            
+            # Verify activity tracker update
+            mock_active_job_tracker.is_tracked.assert_called_once_with(mock_job_info_runner.id)
+            mock_active_job_tracker.update_job_status.assert_called_once_with(
+                mock_job_info_runner.id, mock_request.return_value.status
+            )
+            
+            # Verify logging
+            mock_logger.debug.assert_called_once_with(
+                f"Job test-job-123 reported status: RUNNING"
+            )
+
+    def test_update_status_success_not_tracked(
+            self,
+            mock_job_info_runner,
+            mock_server_proxy,
+            mock_file_manager,
+            mock_logger,
+            mock_active_job_tracker):
+        """Test successful status update when job is not tracked."""
+        job = Job(mock_job_info_runner, mock_server_proxy, mock_file_manager, mock_logger,
+                  mock_active_job_tracker)
+        
+        mock_active_job_tracker.is_tracked.return_value = False
+        
+        with (patch('fyn_runner.job_manager.job.StatusEnum') as mock_status_enum,
+              patch('fyn_runner.job_manager.job.PatchedJobInfoRunnerRequest')):
+            
+            # Create a mock status with a value attribute
+            mock_status = MagicMock()
+            mock_status.value = "RUNNING"
+            mock_status_enum.RN = mock_status
+            
+            job._update_status(mock_status_enum.RN)
+            
+            # Verify activity tracker adds job when not tracked
+            mock_active_job_tracker.is_tracked.assert_called_once_with(mock_job_info_runner.id)
+            mock_active_job_tracker.add_job.assert_called_once_with(mock_job_info_runner)
+            mock_active_job_tracker.update_job_status.assert_not_called()
+
+    def test_update_status_api_failure(
+            self,
+            mock_job_info_runner,
+            mock_server_proxy,
+            mock_file_manager,
+            mock_logger,
+            mock_active_job_tracker):
+        """Test status update when API call fails."""
+        job = Job(mock_job_info_runner, mock_server_proxy, mock_file_manager, mock_logger,
+                  mock_active_job_tracker)
+        
+        job._job_api.job_manager_runner_partial_update.side_effect = Exception("API error")
+        original_status = mock_job_info_runner.status
+        
+        with (patch('fyn_runner.job_manager.job.StatusEnum') as mock_status_enum,
+              patch('fyn_runner.job_manager.job.PatchedJobInfoRunnerRequest')):
+            
+            # Create a mock status with a value attribute
+            mock_status = MagicMock()
+            mock_status.value = "RUNNING"
+            mock_status_enum.RN = mock_status
+            
+            # Should not raise exception
+            job._update_status(mock_status_enum.RN)
+            
+            # Verify error was logged
+            mock_logger.error.assert_called_once_with(
+                f"Job test-job-123 failed to report status: API error"
+            )
+            
+            # Verify local status was NOT updated
+            assert job.job.status == original_status
+            
+            # Verify activity tracker was NOT called
+            mock_active_job_tracker.is_tracked.assert_not_called()
+            mock_active_job_tracker.update_job_status.assert_not_called()
