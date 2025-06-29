@@ -117,7 +117,6 @@ class TestServerProxy:
         assert server_proxy._raise_connection_mock.call_count > 0
         assert server_proxy._atexit_register_mock.call_count > 0
 
-
     def test_register_observer(self, server_proxy):
         """Test registering an observer."""
         # Create a mock callback
