@@ -31,6 +31,7 @@ class TestJob:
         """Create a mock JobInfoRunner."""
         job_info_runner = MagicMock()
         job_info_runner.id = "test-job-123"
+        job_info_runner.application_id = "test-app-123"
         return job_info_runner
 
     @pytest.fixture
@@ -76,7 +77,7 @@ class TestJob:
 
     def test_launch_nominal(self, mock_job_info_runner, mock_server_proxy, mock_file_manager,
                             mock_logger, mock_active_job_tracker):
-        """We just test that the control flow (i.e. we log completion and call all steps)."""
+        """We just test the control flow (i.e. we log completion and call all steps)."""
         job = Job(mock_job_info_runner, mock_server_proxy, mock_file_manager, mock_logger,
                   mock_active_job_tracker)
 
@@ -97,7 +98,7 @@ class TestJob:
             mock_file_manager,
             mock_logger,
             mock_active_job_tracker):
-        """We just test that the control flow (i.e. an exceptions are caught and reported)."""
+        """We just test the control flow (i.e. an exceptions are caught and reported)."""
         job = Job(mock_job_info_runner, mock_server_proxy, mock_file_manager, mock_logger,
                   mock_active_job_tracker)
 
@@ -118,3 +119,157 @@ class TestJob:
 
         mock_logger.error.assert_called_once_with(f"Job {mock_job_info_runner.id} "
                                                   f"suffered a runner exception: run failed")
+
+    def test_setup_nominal(
+            self,
+            mock_job_info_runner,
+            mock_server_proxy,
+            mock_file_manager,
+            mock_logger,
+            mock_active_job_tracker):
+        """We just test the control flow (i.e. all functions called, and logging messages)."""
+        job = Job(mock_job_info_runner, mock_server_proxy, mock_file_manager, mock_logger,
+                  mock_active_job_tracker)
+
+        with (patch.object(job, '_update_status') as mock_update_status,
+              patch.object(job, '_setup_local_simulation_directory') as 
+              mock_setup_local_simulation_directory,
+              patch.object(job, '_fetching_simulation_resources') as 
+              mock_fetching_simulation_resources,
+              patch('fyn_runner.job_manager.job.StatusEnum') as mock_status_enum):
+
+            mock_status_enum.PR = "PREPARING"
+
+            job._setup()
+            mock_update_status.assert_called_once_with(mock_status_enum.PR)
+            mock_setup_local_simulation_directory.assert_called_once()
+            mock_fetching_simulation_resources.assert_called_once()
+
+        job._app_reg_api.application_registry_retrieve.assert_called_once_with(
+            mock_job_info_runner.application_id
+        )
+        mock_logger.info.assert_called_once_with(f"Job {mock_job_info_runner.id} is in setup")
+
+    def test_setup_exception(
+            self,
+            mock_job_info_runner,
+            mock_server_proxy,
+            mock_file_manager,
+            mock_logger,
+            mock_active_job_tracker):
+        """We just test the control flow (i.e. an exceptions are NOT caught)."""
+        job = Job(mock_job_info_runner, mock_server_proxy, mock_file_manager, mock_logger,
+                  mock_active_job_tracker)
+
+        with (patch.object(job, '_update_status') as mock_update_status,
+              patch.object(job, '_setup_local_simulation_directory') as 
+              mock_setup_local_simulation_directory,
+              patch.object(job, '_fetching_simulation_resources') as 
+              mock_fetching_simulation_resources,
+              patch('fyn_runner.job_manager.job.StatusEnum') as mock_status_enum):
+
+            mock_status_enum.PR = "PREPARING"
+            mock_setup_local_simulation_directory.side_effect = Exception("failed")
+            
+            with pytest.raises(Exception, match="failed"):
+              job._setup()
+
+            mock_update_status.assert_called_once_with(mock_status_enum.PR)
+            mock_setup_local_simulation_directory.assert_called_once()
+            mock_fetching_simulation_resources.assert_not_called()
+
+        job._app_reg_api.application_registry_retrieve.assert_called_once_with(
+            mock_job_info_runner.application_id
+        )
+        mock_logger.info.assert_called_once_with(f"Job {mock_job_info_runner.id} is in setup")
+
+    def test_run_nominal(
+            self,
+            mock_job_info_runner,
+            mock_server_proxy,
+            mock_file_manager,
+            mock_logger,
+            mock_active_job_tracker):
+        """We just test the control flow (i.e. all functions called, and logging messages)."""
+        job = Job(mock_job_info_runner, mock_server_proxy, mock_file_manager, mock_logger,
+                  mock_active_job_tracker)
+
+        with patch.object(job, '_run_application') as mock_run_application:
+            job._run()
+
+            mock_run_application.assert_called_once()
+        mock_logger.info.assert_called_once_with(f"Job {mock_job_info_runner.id} is in run")
+
+    def test_run_exception(
+            self,
+            mock_job_info_runner,
+            mock_server_proxy,
+            mock_file_manager,
+            mock_logger,
+            mock_active_job_tracker):
+        """We just test the control flow (i.e. an exceptions are NOT caught)."""
+        job = Job(mock_job_info_runner, mock_server_proxy, mock_file_manager, mock_logger,
+                  mock_active_job_tracker)
+
+        with patch.object(job, '_run_application') as mock_run_application:
+            mock_run_application.side_effect = Exception("failed")
+
+            with pytest.raises(Exception, match="failed"):
+              job._run()
+
+            mock_run_application.assert_called_once()
+        mock_logger.info.assert_called_once_with(f"Job {mock_job_info_runner.id} is in run")
+
+    def test_clean_up_nominal(
+            self,
+            mock_job_info_runner,
+            mock_server_proxy,
+            mock_file_manager,
+            mock_logger,
+            mock_active_job_tracker):
+        """We just test the control flow (i.e. all functions called, and logging messages)."""
+        job = Job(mock_job_info_runner, mock_server_proxy, mock_file_manager, mock_logger,
+                  mock_active_job_tracker)
+
+        with (patch.object(job, '_update_status') as mock_update_status,
+              patch.object(job, '_upload_application_results') as mock_upload_application_results,
+              patch.object(job, '_report_application_result') as mock_report_application_result,
+              patch('fyn_runner.job_manager.job.StatusEnum') as mock_status_enum,
+              ):
+            mock_status_enum.CU = 'CLEAN_UP'
+
+            job._clean_up()
+
+            mock_update_status.assert_called_once_with(mock_status_enum.CU)
+            mock_upload_application_results.assert_called_once()
+            mock_report_application_result.assert_called_once()
+
+        mock_logger.info.assert_called_once_with(f"Job {mock_job_info_runner.id} is in clean up")
+
+    def test_clean_up_exception(
+            self,
+            mock_job_info_runner,
+            mock_server_proxy,
+            mock_file_manager,
+            mock_logger,
+            mock_active_job_tracker):
+        """We just test the control flow (i.e. an exceptions are NOT caught)."""
+        job = Job(mock_job_info_runner, mock_server_proxy, mock_file_manager, mock_logger,
+                  mock_active_job_tracker)
+
+        with (patch.object(job, '_update_status') as mock_update_status,
+              patch.object(job, '_upload_application_results') as mock_upload_application_results,
+              patch.object(job, '_report_application_result') as mock_report_application_result,
+              patch('fyn_runner.job_manager.job.StatusEnum') as mock_status_enum,
+              ):
+            mock_status_enum.CU = 'CLEAN_UP'
+            mock_upload_application_results.side_effect = Exception("failed")
+
+            with pytest.raises(Exception, match="failed"):
+              job._clean_up()
+
+            mock_update_status.assert_called_once_with(mock_status_enum.CU)
+            mock_upload_application_results.assert_called_once()
+            mock_report_application_result.assert_not_called()
+
+        mock_logger.info.assert_called_once_with(f"Job {mock_job_info_runner.id} is in clean up")
