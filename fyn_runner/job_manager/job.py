@@ -66,7 +66,7 @@ class Job:
 
         # Runner object attributes
         self.file_manager: FileManager = file_manager
-        self.case_directory: Path
+        self.case_directory: Path = None
         self.logger: Logger = logger
         self.server_proxy: ServerProxy = server_proxy
 
