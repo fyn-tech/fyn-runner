@@ -78,18 +78,16 @@ config:
 classDiagram
 
   %% Relationships
-  JobManager *--SimulationMonitor
+  JobManager *--Job
   JobManager *--ServerProxy
   JobManager *-- FileManager
 
-
-  SimulationMonitor *-- FileManager
-  SimulationMonitor *-- Status
-  SimulationMonitor o-- ServerProxy
+  Job o-- ServerProxy
+  Job *-- FileManager
+  Job *-- ActiveJobTracker
 
   ServerProxy *-- APIEndPoint
-  ServerProxy *-- MessageQueue
-  MessageQueue *-- Message
+  ServerProxy *-- Message
 
   FileManager *-- RunnerConfig
 
@@ -98,7 +96,7 @@ classDiagram
   class JobManager {
     %% FIXME: Hardware/system info stuff is not in the job manager.
     %% Attributes:
-    List~SimulationMonitor~ simulations
+    PriorityQueue~Job~ job_queue
     ServerProxy backend_communicator
 
     %% Methods:
@@ -123,34 +121,50 @@ classDiagram
 
   namespace Simulation {
 
-    class SimulationMonitor {
+    class Job {
       %% Attributes:
-      string name
-      Path case_path
-      Status status
-      Path config_file_path
-      thread simulation_monitor
 
-      int _pid
-      int _exit_code
+      %% Python object attributes
+      CompletedProcess _job_result
 
-      %% Methods:
-      launch(config_file_path) -> bool
-      terminate() -> bool
+      %% Robber clients
+      ActiveJobTracker _job_activity_tracker
+      FileManager file_manager
+      Path case_directory
+      Logger logger
+      ServerProxy server_proxy
 
-      %% launching
-      _create_folder_structure() -> bool
-      _copy_input_files() -> bool
-      _start_execution() -> bool
-      _start_monitor_thread() -> thread
+      %% OpenAPI client
+      JobInfoRunner job
+      App application
+      ApplicationRegistryApi _app_reg_api
+      JobManagerApi _job_api
 
-      %% API
-      _report_job_progress()
-      _report_job_status_change()
-    }
+      %% Methods
+      __init__()
+      launch()
 
-    class Status {
-      <<enum>>
+      %% Main Control Functions
+      _setup()
+      _run()
+      _clean_up()
+
+      %% Setup Functions
+      _setup_local_simulation_directory()
+      _fetching_simulation_resources()
+      _handle_application(file)
+      _download_resource_file(UUID)
+
+      %% Run Functions
+      _run_application()
+
+      %% Clean Up Functions
+      _upload_application_results()
+      _report_application_result()
+
+      %% Misc
+      _update_status(StatusEnum)
+
     }
   }
 
@@ -165,7 +179,7 @@ classDiagram
     class ServerProxy {
       %% Attributes:
       APIEndPoint api
-      MessageQueue message_queue
+      PriorityQueue~Message~ message_queue
       Dict~str, observer_call_back[]~ observer_list
       thread _outgoing_message_handler
       thread _incoming_message_handler
@@ -185,14 +199,6 @@ classDiagram
 
     class APIEndPoint {
       <<enum>>
-    }
-
-    class MessageQueue {
-      Message[] messages
-
-      is_empty() ->bool
-      push_message(Message)
-      get_next_message() -> Message
     }
 
     class Message {

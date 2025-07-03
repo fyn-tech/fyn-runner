@@ -13,12 +13,15 @@
 
 from pydantic import BaseModel, Field
 
+from fyn_runner.job_manager.config import JobManagerConfig
 from fyn_runner.server.config import ServerProxyConfig
 from fyn_runner.utilities.config import FileManagerConfig, LoggingConfig
 
 
 class RunnerConfig(BaseModel):
     """Root configuration for the Fyn Runner application."""
-    logging: LoggingConfig = Field(default_factory=LoggingConfig)
     file_manager: FileManagerConfig = Field(default_factory=FileManagerConfig)
+    job_manager: JobManagerConfig = Field(default_factory=JobManagerConfig)
+    logging: LoggingConfig = Field(default_factory=LoggingConfig)
     server_proxy: ServerProxyConfig = Field(default_factory=ServerProxyConfig)
+    

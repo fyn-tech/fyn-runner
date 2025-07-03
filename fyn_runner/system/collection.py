@@ -11,11 +11,11 @@
 # You should have received a copy of the GNU General Public License along with this program. If not,
 #  see <https://www.gnu.org/licenses/>.
 
+from cpuinfo import get_cpu_info
 import json
 import platform
-
 import psutil
-from cpuinfo import get_cpu_info
+import re
 
 from fyn_runner.server.message import HttpMethod, Message
 
@@ -77,6 +77,45 @@ def _get_os_info():
         'system_architecture': platform.machine(),
     }
 
+def _parse_cache_size(cache_str):
+    """
+    Parse cache size string (e.g., "11.5 MiB") and convert to bytes.
+    
+    Args:
+        cache_str: String representation of cache size
+        
+    Returns:
+        int: Cache size in bytes, or None if parsing fails
+    """
+    if not cache_str or cache_str == 'None':
+        return None
+        
+    # Handle cases where it's already a number
+    if isinstance(cache_str, (int, float)):
+        return int(cache_str)
+    
+    # Parse string like "11.5 MiB", "512 KiB", "32 MB", etc.
+    match = re.match(r'(\d+(?:\.\d+)?)\s*([KMGT]i?B?)', str(cache_str), re.IGNORECASE)
+    if not match:
+        return None
+        
+    value = float(match.group(1))
+    unit = match.group(2).upper()
+    
+    # Convert to bytes
+    multipliers = {
+        'B': 1,
+        'KB': 1000, 'KIB': 1024,
+        'MB': 1000**2, 'MIB': 1024**2,
+        'GB': 1000**3, 'GIB': 1024**3,
+        'TB': 1000**4, 'TIB': 1024**4,
+        # Handle cases without 'B'
+        'K': 1024, 'M': 1024**2, 'G': 1024**3, 'T': 1024**4
+    }
+    
+    multiplier = multipliers.get(unit, 1)
+    return int(value * multiplier)
+
 
 def _get_cpu_data():
     """
@@ -92,9 +131,9 @@ def _get_cpu_data():
         'cpu_clock_speed_actual': cpu_info['hz_actual'][0],
         'cpu_logical_cores': psutil.cpu_count(),
         'cpu_physical_cores': psutil.cpu_count(logical=False),
-        'cpu_cache_l1_size': cpu_info['l1_data_cache_size'],
-        'cpu_cache_l2_size': cpu_info['l2_cache_size'],
-        'cpu_cache_l3_size': cpu_info['l3_cache_size'],
+        'cpu_cache_l1_size': _parse_cache_size(cpu_info['l1_data_cache_size']),
+        'cpu_cache_l2_size': _parse_cache_size(cpu_info['l2_cache_size']),
+        'cpu_cache_l3_size': _parse_cache_size(cpu_info['l3_cache_size']),
     }
 
 

@@ -9,7 +9,8 @@ dependencies = [
     "pydantic",
     "pyyaml",
     "requests",
-    "websocket-client"
+    "websocket-client",
+    "fyn_api_client"
 ]
 
 [project.optional-dependencies]

@@ -24,16 +24,6 @@ class ServerProxyConfig(BaseModel):
     token: UUID4 = Field(
         description="The authentication token which should be used when interacting with the "
         "back-end")
-    api_url: HttpUrl = Field(
-        default="https://api.fyn-tech.com",
-        allowed_schemes=["https"],
-        description="The end point to the fyn-tech api.")
-    api_port: int = Field(
-        default=443,
-        ge=1,
-        le=65535,
-        allowed_schemes=["https"],
-        description="The port number for the fyn-tech API.")
     report_interval: int = Field(
         default=600,
         description="The interval, in seconds, between reporting status to the backend.")

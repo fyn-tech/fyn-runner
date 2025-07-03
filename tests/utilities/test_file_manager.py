@@ -13,6 +13,7 @@
 
 import shutil
 import tempfile
+
 from pathlib import Path
 from unittest.mock import patch
 
@@ -31,7 +32,7 @@ class TestFileManager:
             yield Path(temp_dir)
 
     def test_default_directory_initialisation(self, temp_dir):
-        """Mock appdirs and ensure correct directory creation"""
+        """Mock appdirs and directories paths set, but not created"""
 
         temp_path = temp_dir
         with patch('appdirs.user_data_dir') as mock_data_dir, \
@@ -44,15 +45,18 @@ class TestFileManager:
             mock_config_dir.return_value = str(temp_path / 'config')
             mock_log_dir.return_value = str(temp_path / 'logs')
 
-            FileManager(temp_path)
-            assert Path(temp_path).exists()
-            assert Path(temp_path / 'cache').exists()
-            assert Path(temp_path / 'config').exists()
-            assert Path(temp_path / 'logs').exists()
-            assert Path(temp_path / 'simulations').exists()
+            manager = FileManager(temp_path)
+            assert manager.cache_dir == Path(temp_path / 'cache')
+            assert manager.config_dir == Path(temp_path / 'config')
+            assert manager.log_dir == Path(temp_path / 'logs')
+            assert manager.simulation_dir == Path(temp_path / 'simulations')
+            assert not Path(temp_path / 'cache').exists()
+            assert not Path(temp_path / 'config').exists()
+            assert not Path(temp_path / 'logs').exists()
+            assert not Path(temp_path / 'simulations').exists()
 
     def test_default_directory_with_app_name(self, temp_dir):
-        """Mock appdirs, and change program name, and ensure correct directory creation"""
+        """Mock appdirs, and change program name, directories paths set, but not created"""
 
         name = 'test_runner'
         temp_path = temp_dir
@@ -66,20 +70,22 @@ class TestFileManager:
             mock_config_dir.return_value = str(temp_path / name / 'config')
             mock_log_dir.return_value = str(temp_path / name / 'logs')
 
-            FileManager(None, name)
-            assert Path(temp_path).exists()
-            assert Path(temp_path / name).exists()
-            print(temp_path / name)
-            assert Path(temp_path / name / 'cache').exists()
-            assert Path(temp_path / name / 'config').exists()
-            assert Path(temp_path / name / 'logs').exists()
-            assert Path(temp_path / name / 'simulations').exists()
+            manager = FileManager()
+            assert manager.cache_dir == Path(temp_path / name / 'cache')
+            assert manager.config_dir == Path(temp_path / name / 'config')
+            assert manager.log_dir == Path(temp_path / name/ 'logs')
+            assert manager.simulation_dir == Path(temp_path / name/  'simulations')
+            assert not Path(temp_path / name).exists()
+            assert not Path(temp_path / name / 'cache').exists()
+            assert not Path(temp_path / name / 'config').exists()
+            assert not Path(temp_path / name / 'logs').exists()
+            assert not Path(temp_path / name / 'simulations').exists()
 
     def test_custom_directory_initialisation(self, temp_dir):
         """Test dependency injection path and ensure directory creation"""
 
         temp_path = Path(temp_dir)
-        FileManager(temp_path)
+        FileManager(temp_path).init_directories()
         assert Path(temp_path / 'cache').exists()
         assert Path(temp_path / 'config').exists()
         assert Path(temp_path / 'logs').exists()
@@ -89,7 +95,7 @@ class TestFileManager:
         """Test string dependency injection path and ensure directory creation"""
 
         temp_path = str(temp_dir)  # explicitly make string
-        FileManager(temp_path)
+        FileManager(temp_path).init_directories()
         assert Path(temp_path + '/cache').exists()
         assert Path(temp_path + '/config').exists()
         assert Path(temp_path + '/logs').exists()
@@ -100,6 +106,7 @@ class TestFileManager:
         """Test addition of a simulation directory """
         temp_path = temp_dir
         manager = FileManager(temp_path)
+        manager.init_directories()
 
         new_sim_dir = temp_path / "new_simulations"
         manager.simulation_dir = new_sim_dir

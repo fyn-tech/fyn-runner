@@ -50,10 +50,7 @@ class FileManager:
         # Simulation directory is always in user data (place holder)
         self._simulation_dir = self._runner_dir / "simulations"
 
-        # Initialize directories
-        self._init_directories()
-
-    def _init_directories(self):
+    def init_directories(self):
         """Create folder structure."""
         for directory in [
             self.runner_dir,
@@ -99,3 +96,20 @@ class FileManager:
         """
         self._simulation_dir = Path(path)
         self._simulation_dir.mkdir(parents=True, exist_ok=True)
+
+    # ----------------------------------------------------------------------------------------------
+    #  Simulation Directory Methods
+    # ----------------------------------------------------------------------------------------------
+
+    def request_simulation_directory(self, job_id : str):
+        
+        if '/' in job_id or '\\' in job_id:
+            raise ValueError("job_id cannot contain path separators")
+        
+        case_directory = self.simulation_dir / job_id
+        
+        try:
+            case_directory.mkdir(exist_ok=True, parents=True)
+            return case_directory
+        except Exception as e:
+            raise RuntimeError(f"Failed to create directory {case_directory}: {e}")
