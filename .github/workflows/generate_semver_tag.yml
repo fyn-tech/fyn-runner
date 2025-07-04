@@ -1,0 +1,13 @@
+name: Generate SemVer Tag
+
+on:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: write  # Required to create and push tags
+
+jobs:
+  tag:
+    uses: fyn-tech/fyn-env/.github/workflows/generate_semver_tag_shared.yml@main
