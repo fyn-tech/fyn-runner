@@ -27,7 +27,7 @@ from fyn_runner.job_manager.job import Job
 class JobManager:
     """Orchestrates job execution pipeline with concurrent processing and resource management.
 
-    The JobManager handles the complete lifecycle of job processing from queue management to 
+    The JobManager handles the complete lifecycle of job processing from queue management to
     execution coordination. It maintains a priority queue for pending jobs and manages concurrent
     execution within configured resource limits. Jobs are executed in separate threads while the
     manager tracks their progress and handles thread and queue related cleanup.
@@ -40,7 +40,7 @@ class JobManager:
 
     Note:
         The main() method runs a blocking loop that should be executed in its own thread.
-        Job execution is limited by max_concurrent_jobs configuration to prevent resource 
+        Job execution is limited by max_concurrent_jobs configuration to prevent resource
         exhaustion.
 
     Warning:
@@ -57,7 +57,7 @@ class JobManager:
     def __init__(self, server_proxy, file_manager, logger, configuration):
         """Initialize the job manager with required dependencies and configuration.
 
-        Sets up job queues, activity tracking, and fetches existing jobs from the backend. 
+        Sets up job queues, activity tracking, and fetches existing jobs from the backend.
         Configuration parameters control resource limits and execution behaviour.
 
         Args:
@@ -76,8 +76,8 @@ class JobManager:
 
         # Job queues
         self._pending_queue: PriorityQueue = PriorityQueue()
-        self._job_activity_tracker : ActiveJobTracker = ActiveJobTracker()
-        self._observer_threads : dict[Thread] = {}
+        self._job_activity_tracker: ActiveJobTracker = ActiveJobTracker()
+        self._observer_threads: dict[Thread] = {}
 
         # State data
         self._is_running = True
@@ -115,14 +115,15 @@ class JobManager:
 
             total_jobs = self._job_activity_tracker.get_job_count()
             total_jobs['queued'] = self._pending_queue.qsize()
-            total_jobs['total'] = self._pending_queue.qsize() + total_jobs.pop('total') # places at back
-            self.logger.info(f"Loaded: {total_jobs}")    
+            total_jobs['total'] = self._pending_queue.qsize(
+            ) + total_jobs.pop('total')  # places at back
+            self.logger.info(f"Loaded: {total_jobs}")
         else:
             self.logger.info("No jobs found")
 
     def _attached_job_listener(self):
         """Attach WebSocket listeners for real-time job commands.
-        
+
         Todo:
             Implementation pending - will handle real-time commands like job termination
             and status updates from the backend.
@@ -131,14 +132,14 @@ class JobManager:
         pass
 
     # ----------------------------------------------------------------------------------------------
-    #  Job Methods 
+    #  Job Methods
     # ----------------------------------------------------------------------------------------------
 
     def main(self):
         """Main processing loop that manages job execution and resource allocation.
 
-        Continuously processes the job queue, launching new jobs when capacity allows and cleaning 
-        up completed executions. The loop respects concurrent job limits and handles errors 
+        Continuously processes the job queue, launching new jobs when capacity allows and cleaning
+        up completed executions. The loop respects concurrent job limits and handles errors
         gracefully by re-queuing failed jobs.
 
         The loop terminates when max_main_loop_count is reached or _is_running is set to False. Each
@@ -150,7 +151,7 @@ class JobManager:
         """
         loop_count = 0
         while self._is_running:
-            self.logger.debug("New tick")   
+            self.logger.debug("New tick")
             self._cleanup_finished_threads()
             try:
                 no_active_jobs = len(self._job_activity_tracker.get_active_jobs())
@@ -159,9 +160,9 @@ class JobManager:
                         # Get next job to launch
                         _, job_info = self._pending_queue.get(timeout=30)
                         self._launch_new_job(job_info)
-                                                
+
                     except Empty:
-                        self.logger.debug("No pending jobs, waiting...")        
+                        self.logger.debug("No pending jobs, waiting...")
                 else:
                     # At capacity - wait for jobs to complete
                     self.logger.debug(f"At capacity, number of active jobs: {no_active_jobs}")
@@ -175,8 +176,7 @@ class JobManager:
             loop_count += 1
             if loop_count >= self._max_main_loop_count:
                 self.logger.info(f"Reach max main loop count {loop_count}, exiting main loop.")
-                self._is_running = False            
-            
+                self._is_running = False
 
     def _launch_new_job(self, job_info):
         """Launch a new job in a separate thread with error handling and recovery.
@@ -191,47 +191,48 @@ class JobManager:
             Failed launches result in the job being reset to QUEUED status and re-added to the
             pending queue. Thread cleanup is handled automatically on failure.
         """
-        
+
         self.logger.info(f"Launching new job {job_info.id}")
         thread = None
         try:
-            job = Job(job_info, self.server_proxy, self.file_manager, self.logger, 
+            job = Job(job_info, self.server_proxy, self.file_manager, self.logger,
                       self._job_activity_tracker)
-            thread = Thread(target=job.launch)     
+            thread = Thread(target=job.launch)
             thread.start()
-            
             self._observer_threads[job_info.id] = thread
             self._pending_queue.task_done()
 
         except Exception as e:
-            self.logger.error(f"Failed to launch new job: {e}")   
+
+            self.logger.error(f"Failed to launch new job: {e}")
+
+            self._pending_queue.task_done()  # must clear the queue (it is done) -> re-adds below.
 
             # Clean up thread if created but not started
             if thread and job_info.id in self._observer_threads:
                 del self._observer_threads[job_info.id]
 
             # Ensure server re-queues
-            try: 
+            try:
                 jir = PatchedJobInfoRunnerRequest(status=StatusEnum.QD)
                 job_info.status = StatusEnum.QD
-                self.job_api.job_manager_runner_partial_update(job_info.id, 
+                self.job_api.job_manager_runner_partial_update(job_info.id,
                                                                patched_job_info_request=jir)
-            
+
                 # re-add
-                self._pending_queue.put((job_info.priority, job_info)) 
-                self._pending_queue.task_done() 
+                self._pending_queue.put((job_info.priority, job_info))
 
                 # if the error occoured after its status was changed it must be removed.
                 if self._job_activity_tracker.is_tracked(job_info.id):
                     self._job_activity_tracker.remove_job(job_info.id)
-            except:
+            except BaseException:
                 self.logger.error(f"Job manager failed to reset job {self.job.id} with: {e}")
 
     def _cleanup_finished_threads(self):
         """Clean up completed job threads to prevent resource leaks.
 
-        Identifies threads that have finished execution and removes them from the observer thread 
-        collection. This prevents accumulation of dead threads and keeps the thread tracking 
+        Identifies threads that have finished execution and removes them from the observer thread
+        collection. This prevents accumulation of dead threads and keeps the thread tracking
         accurate.
 
         Note:
@@ -240,14 +241,14 @@ class JobManager:
         """
 
         finished_job_ids = []
-        
+
         for job_id, thread in self._observer_threads.items():
             if not thread.is_alive():
                 finished_job_ids.append(job_id)
-        
+
         for job_id in finished_job_ids:
             self.logger.debug(f"Cleaning up finished thread for job {job_id}")
             del self._observer_threads[job_id]
-        
+
         if finished_job_ids:
             self.logger.info(f"Cleaned up {len(finished_job_ids)} finished threads")
