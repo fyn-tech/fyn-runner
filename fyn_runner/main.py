@@ -20,7 +20,7 @@ from fyn_runner.system.collection import report_current_system_info
 from fyn_runner.utilities.config_manager import ConfigManager
 from fyn_runner.utilities.file_manager import FileManager
 from fyn_runner.utilities.logging_utilities import create_logger
-from fyn_runner.job_managment.job_manager import JobManager
+from fyn_runner.job_management.job_manager import JobManager
 
 def main():
     """Runner entry point."""

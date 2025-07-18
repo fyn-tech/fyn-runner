@@ -13,7 +13,7 @@
 
 from pydantic import BaseModel, Field
 
-from fyn_runner.job_managment.config import JobManagerConfig
+from fyn_runner.job_management.config import JobManagerConfig
 from fyn_runner.server.config import ServerProxyConfig
 from fyn_runner.utilities.config import FileManagerConfig, LoggingConfig
 

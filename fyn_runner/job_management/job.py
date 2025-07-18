@@ -23,7 +23,7 @@ from fyn_api_client.models.type_enum import TypeEnum
 from fyn_api_client.models.patched_job_info_runner_request import PatchedJobInfoRunnerRequest
 
 from fyn_runner.server.server_proxy import ServerProxy
-from fyn_runner.job_managment.job_activity_tracking import ActiveJobTracker
+from fyn_runner.job_management.job_activity_tracking import ActiveJobTracker
 from fyn_runner.utilities.file_manager import FileManager
 
 

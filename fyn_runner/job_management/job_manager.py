@@ -19,9 +19,9 @@ from threading import Thread
 from fyn_api_client.models.patched_job_info_runner_request import PatchedJobInfoRunnerRequest
 from fyn_api_client.models.status_enum import StatusEnum
 
-import fyn_runner.job_managment.job_activity_tracking as jat
-from fyn_runner.job_managment.job_activity_tracking import ActiveJobTracker, ActivityState
-from fyn_runner.job_managment.job import Job
+import fyn_runner.job_management.job_activity_tracking as jat
+from fyn_runner.job_management.job_activity_tracking import ActiveJobTracker, ActivityState
+from fyn_runner.job_management.job import Job
 
 
 class JobManager:

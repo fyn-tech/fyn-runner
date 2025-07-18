@@ -18,7 +18,7 @@ from unittest.mock import MagicMock
 import pytest
 
 from fyn_api_client.models.status_enum import StatusEnum
-from fyn_runner.job_managment.job_activity_tracking import (
+from fyn_runner.job_management.job_activity_tracking import (
     ActivityState,
     ActiveJobTracker,
     job_status_to_activity_status
