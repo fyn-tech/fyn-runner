@@ -85,13 +85,17 @@ classDiagram
   JobManager *--Job
   JobManager *--ServerProxy
   JobManager *-- FileManager
+  JobManager *-- JobManagerApi
 
   Job o-- ServerProxy
   Job *-- FileManager
   Job *-- ActiveJobTracker
-
-  ServerProxy *-- APIEndPoint
+  Job *-- ApplicationRegistryApi
+  Job *-- JobManagerApi
+    
+  ServerProxy *-- ApiClient
   ServerProxy *-- Message
+  ServerProxy *-- RunnerManagerApi
 
   FileManager *-- RunnerConfig
 
@@ -182,28 +186,37 @@ classDiagram
   namespace Server {
     class ServerProxy {
       %% Attributes:
-      APIEndPoint api
+      ApiClient _api_client
+      RunnerManagerApi _runner_api
       PriorityQueue~Message~ message_queue
       Dict~str, observer_call_back[]~ observer_list
       thread _outgoing_message_handler
       thread _incoming_message_handler
 
       %% Method:
-      push_message(Message) -> bool
+      create_application_registry_api() -> ApplicationRegistryApi
+      create_job_manager_api() -> JobManagerApi
+      create_runner_manager_api() -> RunnerManagerApi
       register_observer(str, observer_call_back(Message)) -> bool
       unregister_observer(str) -> bool
-      notify_observers(Message) -> bool
-
-      %% Backend communication
-      _raise_connection()
-      _fetch_api() -> APIEndPoint
-      _send_message(Message) -> bool
-      _listen_api()
     }
 
-    class APIEndPoint {
-      <<enum>>
+    class ApiClient {
+      <<OpenAPI Generated Client>>
     }
+
+    class ApplicationRegistryApi {
+      <<OpenAPI>>
+    }
+
+    class JobManagerApi {
+      <<OpenAPIt>>
+    }
+
+    class RunnerManagerApi {
+      <<OpenAPI>>
+    }
+
 
     class Message {
       data data
