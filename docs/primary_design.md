@@ -185,20 +185,38 @@ classDiagram
 
   namespace Server {
     class ServerProxy {
-      %% Attributes:
+      
+      %% Status Attributes:
+      bool running
+
+      %% HTTP Attributes:
       ApiClient _api_client
       RunnerManagerApi _runner_api
-      PriorityQueue~Message~ message_queue
-      Dict~str, observer_call_back[]~ observer_list
-      thread _outgoing_message_handler
-      thread _incoming_message_handler
 
-      %% Method:
+      %% Web Socekt Attributes:
+      _observers~str, observer_call_back[]~ observer_list
+      WebSocketApp _ws
+      Thread _ws_thread
+
+      %% Interface:
       create_application_registry_api() -> ApplicationRegistryApi
       create_job_manager_api() -> JobManagerApi
       create_runner_manager_api() -> RunnerManagerApi
-      register_observer(str, observer_call_back(Message)) -> bool
-      unregister_observer(str) -> bool
+      register_observer(str, observer_call_back(Message))
+      unregister_observer(str)
+      
+      %% HTTP Backend:
+      _configure_client_api() -> ApiClient
+      _report_status()
+
+      %% Web Socket Backend 
+      _receive_handler
+      _handle_ws_message(_ws, message_data)
+      _on_ws_open(_ws)
+      _on_ws_close(_ws, close_status_code, close_msg)
+      _on_ws_error(_ws, error)
+      _ws_error_response(message_id, data)
+
     }
 
     class ApiClient {
