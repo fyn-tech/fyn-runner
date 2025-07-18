@@ -16,7 +16,7 @@ from queue import Empty
 import pytest
 import math
 
-from fyn_runner.job_manager.job_manager import JobManager
+from fyn_runner.job_managment.job_manager import JobManager
 
 
 class TestJobManager:

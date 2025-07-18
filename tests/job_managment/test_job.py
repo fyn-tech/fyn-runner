@@ -15,7 +15,7 @@ from unittest.mock import MagicMock, patch, mock_open, call
 from pathlib import Path
 import pytest
 
-from fyn_runner.job_manager.job import Job
+from fyn_runner.job_managment.job import Job
 
 
 class TestJob:
