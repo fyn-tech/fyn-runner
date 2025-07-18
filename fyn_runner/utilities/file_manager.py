@@ -101,8 +101,20 @@ class FileManager:
     #  Simulation Directory Methods
     # ----------------------------------------------------------------------------------------------
 
-    def request_simulation_directory(self, job_id : str):
+    def request_simulation_directory(self, job_id: str):
+        """
+        Given a job id a new simulation directory is created.
+
+        Args:
+          job_id(str): The job id hash as a string.
         
+        Returns:
+            Path: To the newly created simulation directory.
+          
+        Raises:
+            ValueError: If the job_id contains 'path seperators'
+            RuntimeError: If directory creation fails.
+        """
         if '/' in job_id or '\\' in job_id:
             raise ValueError("job_id cannot contain path separators")
         
@@ -112,4 +124,5 @@ class FileManager:
             case_directory.mkdir(exist_ok=True, parents=True)
             return case_directory
         except Exception as e:
-            raise RuntimeError(f"Failed to create directory {case_directory}: {e}")
+            raise RuntimeError(f"Failed to create directory {case_directory}: {e}") from e
+        

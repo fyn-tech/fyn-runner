@@ -100,34 +100,35 @@ classDiagram
   FileManager *-- RunnerConfig
 
 
-  %% Classes
-  class JobManager {
-    %% FIXME: Hardware/system info stuff is not in the job manager.
-    %% Attributes:
-    PriorityQueue~Job~ job_queue
-    ServerProxy backend_communicator
+  namespace Job Management {
+    
+    %% Classes
+    class JobManager {
+      %% FIXME: Hardware/system info stuff is not in the job manager.
+      %% Attributes:
+      PriorityQueue~Job~ job_queue
+      ServerProxy backend_communicator
 
-    %% Methods:
-    %% public interface/facade:
-    start_up()
-    shut_down()
+      %% Methods:
+      %% public interface/facade:
+      start_up()
+      shut_down()
 
-    %% Startup procedures
-    _load_configuration()
-    _raise_server_connection()
-    _check_system_hardware()
+      %% Startup procedures
+      _load_configuration()
+      _raise_server_connection()
+      _check_system_hardware()
 
-    %% Startup procedures
-    _end_server_connection()
-    _save_configuration()
+      %% Startup procedures
+      _end_server_connection()
+      _save_configuration()
 
-    %% API communication (exc. sim file sync.)
-    _respond_to_job_request()
-    _update_hardware_data()
-    _heart_beat()
-  }
+      %% API communication (exc. sim file sync.)
+      _respond_to_job_request()
+      _update_hardware_data()
+      _heart_beat()
+    }
 
-  namespace Simulation {
 
     class Job {
       %% Attributes:
@@ -181,6 +182,8 @@ classDiagram
     Path simulation_file_database
     Path runner_folder
     RunnerConfig: config
+
+    request_simulation_directory(str) -> Path
   }
 
   namespace Server {
