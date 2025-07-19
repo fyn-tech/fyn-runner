@@ -41,3 +41,8 @@ disable = [
     "too-many-instance-attributes",
     "too-many-public-methods"
 ]
+
+[tool.pylint.typecheck]
+extension-pkg-whitelist = [
+    "fyn_api_client",
+]
