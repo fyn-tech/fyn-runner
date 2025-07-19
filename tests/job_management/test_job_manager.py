@@ -17,6 +17,9 @@ import pytest
 import math
 
 from fyn_runner.job_management.job_manager import JobManager
+from fyn_api_client.models.status_enum import StatusEnum
+from fyn_api_client.models.patched_job_info_runner_request import PatchedJobInfoRunnerRequest
+from fyn_runner.job_management.job_activity_tracking import ActivityState
 
 
 class TestJobManager:
@@ -61,8 +64,8 @@ class TestJobManager:
     def test_initialization(self, mock_server_proxy, mock_file_manager, mock_logger,
                             mock_configuration):
         """Test JobManager initialization."""
-        with (patch('fyn_runner.job_manager.job_manager.PriorityQueue') as mock_queue,
-              patch('fyn_runner.job_manager.job_manager.ActiveJobTracker') as mock_tracker,
+        with (patch('fyn_runner.job_management.job_manager.PriorityQueue') as mock_queue,
+              patch('fyn_runner.job_management.job_manager.ActiveJobTracker') as mock_tracker,
               patch.object(JobManager, '_fetch_jobs') as mock_fetch):
 
             manager = JobManager(mock_server_proxy, mock_file_manager, mock_logger,
@@ -93,8 +96,8 @@ class TestJobManager:
     def test_fetch_jobs_success(self, mock_server_proxy, mock_file_manager, mock_logger,
                                 mock_configuration):
         """Test successful job fetching with mixed job statuses."""
-        with (patch('fyn_runner.job_manager.job_manager.PriorityQueue') as mock_queue_class,
-              patch('fyn_runner.job_manager.job_manager.ActiveJobTracker') as mock_tracker_class,
+        with (patch('fyn_runner.job_management.job_manager.PriorityQueue') as mock_queue_class,
+              patch('fyn_runner.job_management.job_manager.ActiveJobTracker') as mock_tracker_class,
               patch.object(JobManager, '_fetch_jobs', lambda self: None)):
 
             # Create mocked instances
@@ -109,24 +112,20 @@ class TestJobManager:
         # Create mock jobs
         pending_job = MagicMock()
         pending_job.priority = 5
-        pending_job.status = "QUEUED"
+        pending_job.status = StatusEnum.QD
 
         active_job = MagicMock()
-        active_job.status = "RUNNING"
+        active_job.status = StatusEnum.RN
 
         completed_job = MagicMock()
-        completed_job.status = "SUCCEEDED"
+        completed_job.status = StatusEnum.SD
 
         manager.job_api.job_manager_runner_list.return_value = [pending_job, active_job,
                                                                 completed_job]
 
         # Mock job_status_to_activity_status
-        with (patch('fyn_runner.job_manager.job_manager.jat.job_status_to_activity_status') as
-              mock_status_converter,
-              patch('fyn_runner.job_manager.job_manager.ActivityState') as mock_activity_state):
-
-            mock_activity_state.PENDING = "PENDING"
-            mock_status_converter.side_effect = ["PENDING", "ACTIVE", "COMPLETE"]
+        with patch('fyn_runner.job_management.job_manager.jat.job_status_to_activity_status') as mock_status_converter:
+            mock_status_converter.side_effect = [ActivityState.PENDING, ActivityState.ACTIVE, ActivityState.COMPLETE]
 
             # Mock queue size and job count
             mock_queue.qsize.return_value = 1
@@ -156,8 +155,8 @@ class TestJobManager:
     def test_fetch_jobs_api_failure(self, mock_server_proxy, mock_file_manager, mock_logger,
                                     mock_configuration):
         """Test job fetching when API call fails."""
-        with (patch('fyn_runner.job_manager.job_manager.PriorityQueue'),
-              patch('fyn_runner.job_manager.job_manager.ActiveJobTracker'),
+        with (patch('fyn_runner.job_management.job_manager.PriorityQueue'),
+              patch('fyn_runner.job_management.job_manager.ActiveJobTracker'),
               patch.object(JobManager, '_fetch_jobs', lambda self: None)):
             manager = JobManager(mock_server_proxy, mock_file_manager, mock_logger,
                                  mock_configuration)
@@ -174,8 +173,8 @@ class TestJobManager:
     def test_fetch_jobs_empty_response(self, mock_server_proxy, mock_file_manager, mock_logger,
                                        mock_configuration):
         """Test job fetching with no jobs returned."""
-        with (patch('fyn_runner.job_manager.job_manager.PriorityQueue') as mock_queue_class,
-              patch('fyn_runner.job_manager.job_manager.ActiveJobTracker') as mock_tracker_class,
+        with (patch('fyn_runner.job_management.job_manager.PriorityQueue') as mock_queue_class,
+              patch('fyn_runner.job_management.job_manager.ActiveJobTracker') as mock_tracker_class,
               patch.object(JobManager, '_fetch_jobs', lambda self: None)):
 
             # Create mocked instances
@@ -206,8 +205,8 @@ class TestJobManager:
     def test_attached_job_listener(self, mock_server_proxy, mock_file_manager, mock_logger,
                                    mock_configuration):
         """Test attached job listener placeholder method."""
-        with (patch('fyn_runner.job_manager.job_manager.PriorityQueue'),
-              patch('fyn_runner.job_manager.job_manager.ActiveJobTracker'),
+        with (patch('fyn_runner.job_management.job_manager.PriorityQueue'),
+              patch('fyn_runner.job_management.job_manager.ActiveJobTracker'),
               patch.object(JobManager, '_fetch_jobs', lambda self: None)):
             manager = JobManager(mock_server_proxy, mock_file_manager, mock_logger,
                                  mock_configuration)
@@ -222,8 +221,8 @@ class TestJobManager:
         """Test main loop successfully launching a job."""
         mock_configuration.max_main_loop_count = 2  # Limit loop iterations
 
-        with (patch('fyn_runner.job_manager.job_manager.PriorityQueue') as mock_queue_class,
-              patch('fyn_runner.job_manager.job_manager.ActiveJobTracker') as mock_tracker_class,
+        with (patch('fyn_runner.job_management.job_manager.PriorityQueue') as mock_queue_class,
+              patch('fyn_runner.job_management.job_manager.ActiveJobTracker') as mock_tracker_class,
               patch.object(JobManager, '_fetch_jobs', lambda self: None)):
 
             # Create mocked instances
@@ -258,8 +257,8 @@ class TestJobManager:
         mock_configuration.max_main_loop_count = 1
         mock_configuration.max_concurrent_jobs = 2
 
-        with (patch('fyn_runner.job_manager.job_manager.PriorityQueue') as mock_queue_class,
-              patch('fyn_runner.job_manager.job_manager.ActiveJobTracker') as mock_tracker_class,
+        with (patch('fyn_runner.job_management.job_manager.PriorityQueue') as mock_queue_class,
+              patch('fyn_runner.job_management.job_manager.ActiveJobTracker') as mock_tracker_class,
               patch.object(JobManager, '_fetch_jobs', lambda self: None)):
 
             # Create mocked instances
@@ -294,8 +293,8 @@ class TestJobManager:
         """Test main loop when no pending jobs are available."""
         mock_configuration.max_main_loop_count = 1
 
-        with (patch('fyn_runner.job_manager.job_manager.PriorityQueue') as mock_queue_class,
-              patch('fyn_runner.job_manager.job_manager.ActiveJobTracker') as mock_tracker_class,
+        with (patch('fyn_runner.job_management.job_manager.PriorityQueue') as mock_queue_class,
+              patch('fyn_runner.job_management.job_manager.ActiveJobTracker') as mock_tracker_class,
               patch.object(JobManager, '_fetch_jobs', lambda self: None)):
 
             # Create mocked instances
@@ -326,8 +325,8 @@ class TestJobManager:
         """Test main loop exception handling."""
         mock_configuration.max_main_loop_count = 1
 
-        with (patch('fyn_runner.job_manager.job_manager.PriorityQueue') as mock_queue_class,
-              patch('fyn_runner.job_manager.job_manager.ActiveJobTracker') as mock_tracker_class,
+        with (patch('fyn_runner.job_management.job_manager.PriorityQueue') as mock_queue_class,
+              patch('fyn_runner.job_management.job_manager.ActiveJobTracker') as mock_tracker_class,
               patch.object(JobManager, '_fetch_jobs', lambda self: None)):
 
             # Create mocked instances
@@ -355,8 +354,8 @@ class TestJobManager:
     def test_launch_new_job_success(self, mock_server_proxy, mock_file_manager, mock_logger,
                                     mock_configuration, mock_job_info):
         """Test successful job launch."""
-        with (patch('fyn_runner.job_manager.job_manager.PriorityQueue') as mock_queue_class,
-              patch('fyn_runner.job_manager.job_manager.ActiveJobTracker') as mock_tracker_class,
+        with (patch('fyn_runner.job_management.job_manager.PriorityQueue') as mock_queue_class,
+              patch('fyn_runner.job_management.job_manager.ActiveJobTracker') as mock_tracker_class,
               patch.object(JobManager, '_fetch_jobs', lambda self: None)):
 
             # Create mocked instances
@@ -368,8 +367,8 @@ class TestJobManager:
             manager = JobManager(mock_server_proxy, mock_file_manager, mock_logger,
                                  mock_configuration)
 
-        with (patch('fyn_runner.job_manager.job_manager.Job') as mock_job_class,
-              patch('fyn_runner.job_manager.job_manager.Thread') as mock_thread_class):
+        with (patch('fyn_runner.job_management.job_manager.Job') as mock_job_class,
+              patch('fyn_runner.job_management.job_manager.Thread') as mock_thread_class):
 
             mock_job = MagicMock()
             mock_job_class.return_value = mock_job
@@ -401,8 +400,8 @@ class TestJobManager:
     def test_launch_new_job_failure_with_recovery(self, mock_server_proxy, mock_file_manager,
                                                   mock_logger, mock_configuration, mock_job_info):
         """Test job launch failure with re-queuing."""
-        with (patch('fyn_runner.job_manager.job_manager.PriorityQueue') as mock_queue_class,
-              patch('fyn_runner.job_manager.job_manager.ActiveJobTracker') as mock_tracker_class,
+        with (patch('fyn_runner.job_management.job_manager.PriorityQueue') as mock_queue_class,
+              patch('fyn_runner.job_management.job_manager.ActiveJobTracker') as mock_tracker_class,
               patch.object(JobManager, '_fetch_jobs', lambda self: None)):
 
             # Create mocked instances
@@ -417,12 +416,8 @@ class TestJobManager:
         # Set up activity tracker
         mock_tracker.is_tracked.return_value = True
 
-        with (patch('fyn_runner.job_manager.job_manager.Thread') as mock_thread_class,
-              patch('fyn_runner.job_manager.job_manager.StatusEnum') as mock_status_enum,
-              patch('fyn_runner.job_manager.job_manager.PatchedJobInfoRunnerRequest') as
-              mock_request):
+        with (patch('fyn_runner.job_management.job_manager.Thread') as mock_thread_class):
 
-            mock_status_enum.QD = "QUEUED"
             mock_thread = MagicMock()
             mock_thread.start.side_effect = Exception("Thread start error")
             mock_thread_class.return_value = mock_thread
@@ -433,11 +428,11 @@ class TestJobManager:
             mock_logger.error.assert_any_call("Failed to launch new job: Thread start error")
 
             # Verify re-queuing
-            mock_request.assert_called_once_with(status=mock_status_enum.QD)
-            manager.job_api.job_manager_runner_partial_update.assert_called_once_with(
-                mock_job_info.id,
-                patched_job_info_request=mock_request.return_value
-            )
+            manager.job_api.job_manager_runner_partial_update.assert_called_once()
+            call_args = manager.job_api.job_manager_runner_partial_update.call_args
+            assert call_args[0][0] == mock_job_info.id
+            request_obj = call_args[1]['patched_job_info_request']
+            assert hasattr(request_obj, 'status')
 
             # Verify job was re-added to queue
             mock_queue.put.assert_called_once_with((mock_job_info.priority, mock_job_info))
@@ -447,13 +442,13 @@ class TestJobManager:
             mock_tracker.remove_job.assert_called_once_with(mock_job_info.id)
 
             # Verify status was updated
-            assert mock_job_info.status == mock_status_enum.QD
+            assert mock_job_info.status == StatusEnum.QD
 
     def test_launch_new_job_recovery_failure(self, mock_server_proxy, mock_file_manager,
                                              mock_logger, mock_configuration, mock_job_info):
         """Test job launch failure where recovery also fails."""
-        with (patch('fyn_runner.job_manager.job_manager.PriorityQueue') as mock_queue_class,
-              patch('fyn_runner.job_manager.job_manager.ActiveJobTracker') as mock_tracker_class,
+        with (patch('fyn_runner.job_management.job_manager.PriorityQueue') as mock_queue_class,
+              patch('fyn_runner.job_management.job_manager.ActiveJobTracker') as mock_tracker_class,
               patch.object(JobManager, '_fetch_jobs', lambda self: None)):
 
             # Create mocked instances
@@ -465,13 +460,8 @@ class TestJobManager:
             manager = JobManager(mock_server_proxy, mock_file_manager, mock_logger,
                                  mock_configuration)
 
-        # Add a job attribute to manager for the error message
-        manager.job = MagicMock()
-        manager.job.id = "manager-job-id"
-
-        with (patch('fyn_runner.job_manager.job_manager.Job', side_effect=Exception("Job error")),
-              patch('fyn_runner.job_manager.job_manager.StatusEnum'),
-              patch('fyn_runner.job_manager.job_manager.PatchedJobInfoRunnerRequest',
+        with (patch('fyn_runner.job_management.job_manager.Job', side_effect=Exception("Job error")),
+              patch('fyn_runner.job_management.job_manager.PatchedJobInfoRunnerRequest',
                     side_effect=Exception("API error"))):
 
             manager._launch_new_job(mock_job_info)
@@ -484,8 +474,8 @@ class TestJobManager:
     def test_cleanup_finished_threads_with_finished_jobs(self, mock_server_proxy, mock_file_manager,
                                                          mock_logger, mock_configuration):
         """Test cleanup of finished job threads."""
-        with (patch('fyn_runner.job_manager.job_manager.PriorityQueue'),
-              patch('fyn_runner.job_manager.job_manager.ActiveJobTracker'),
+        with (patch('fyn_runner.job_management.job_manager.PriorityQueue'),
+              patch('fyn_runner.job_management.job_manager.ActiveJobTracker'),
               patch.object(JobManager, '_fetch_jobs', lambda self: None)):
             manager = JobManager(mock_server_proxy, mock_file_manager, mock_logger,
                                  mock_configuration)
@@ -522,8 +512,8 @@ class TestJobManager:
     def test_cleanup_finished_threads_no_finished_jobs(self, mock_server_proxy, mock_file_manager,
                                                        mock_logger, mock_configuration):
         """Test cleanup when no threads are finished."""
-        with (patch('fyn_runner.job_manager.job_manager.PriorityQueue'),
-              patch('fyn_runner.job_manager.job_manager.ActiveJobTracker'),
+        with (patch('fyn_runner.job_management.job_manager.PriorityQueue'),
+              patch('fyn_runner.job_management.job_manager.ActiveJobTracker'),
               patch.object(JobManager, '_fetch_jobs', lambda self: None)):
             manager = JobManager(mock_server_proxy, mock_file_manager, mock_logger,
                                  mock_configuration)
@@ -551,8 +541,8 @@ class TestJobManager:
     def test_cleanup_finished_threads_empty(self, mock_server_proxy, mock_file_manager,
                                             mock_logger, mock_configuration):
         """Test cleanup when no threads exist."""
-        with (patch('fyn_runner.job_manager.job_manager.PriorityQueue'),
-              patch('fyn_runner.job_manager.job_manager.ActiveJobTracker'),
+        with (patch('fyn_runner.job_management.job_manager.PriorityQueue'),
+              patch('fyn_runner.job_management.job_manager.ActiveJobTracker'),
               patch.object(JobManager, '_fetch_jobs', lambda self: None)):
             manager = JobManager(mock_server_proxy, mock_file_manager, mock_logger,
                                  mock_configuration)

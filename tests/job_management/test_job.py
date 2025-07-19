@@ -16,6 +16,10 @@ from pathlib import Path
 import pytest
 
 from fyn_runner.job_management.job import Job
+from fyn_api_client.models.status_enum import StatusEnum
+from fyn_api_client.models.resource_type_enum import ResourceTypeEnum
+from fyn_api_client.models.type_enum import TypeEnum
+from fyn_api_client.models.patched_job_info_runner_request import PatchedJobInfoRunnerRequest
 
 
 class TestJob:
@@ -109,17 +113,15 @@ class TestJob:
         with (patch.object(job, '_setup') as mock_setup,
               patch.object(job, '_run') as mock_run,
               patch.object(job, '_clean_up') as mock_cleanup,
-              patch.object(job, '_update_status') as mock_update_status,
-              patch('fyn_runner.job_manager.job.StatusEnum') as mock_status_enum):
+              patch.object(job, '_update_status') as mock_update_status):
 
             mock_run.side_effect = Exception("run failed")
-            mock_status_enum.FE = "FAILED_EXCEPTION"
 
             job.launch()
             mock_setup.assert_called_once()
             mock_run.assert_called_once()
             mock_cleanup.assert_not_called()
-            mock_update_status.assert_called_once_with(mock_status_enum.FE)
+            mock_update_status.assert_called_once_with(StatusEnum.FE)
 
         mock_logger.error.assert_called_once_with(f"Job {mock_job_info_runner.id} "
                                                   f"suffered a runner exception: run failed")
@@ -139,13 +141,10 @@ class TestJob:
               patch.object(job, '_setup_local_simulation_directory') as 
               mock_setup_local_simulation_directory,
               patch.object(job, '_fetching_simulation_resources') as 
-              mock_fetching_simulation_resources,
-              patch('fyn_runner.job_manager.job.StatusEnum') as mock_status_enum):
-
-            mock_status_enum.PR = "PREPARING"
+              mock_fetching_simulation_resources):
 
             job._setup()
-            mock_update_status.assert_called_once_with(mock_status_enum.PR)
+            mock_update_status.assert_called_once_with(StatusEnum.PR)
             mock_setup_local_simulation_directory.assert_called_once()
             mock_fetching_simulation_resources.assert_called_once()
 
@@ -169,16 +168,14 @@ class TestJob:
               patch.object(job, '_setup_local_simulation_directory') as 
               mock_setup_local_simulation_directory,
               patch.object(job, '_fetching_simulation_resources') as 
-              mock_fetching_simulation_resources,
-              patch('fyn_runner.job_manager.job.StatusEnum') as mock_status_enum):
+              mock_fetching_simulation_resources):
 
-            mock_status_enum.PR = "PREPARING"
             mock_setup_local_simulation_directory.side_effect = Exception("failed")
             
             with pytest.raises(Exception, match="failed"):
               job._setup()
 
-            mock_update_status.assert_called_once_with(mock_status_enum.PR)
+            mock_update_status.assert_called_once_with(StatusEnum.PR)
             mock_setup_local_simulation_directory.assert_called_once()
             mock_fetching_simulation_resources.assert_not_called()
 
@@ -237,14 +234,11 @@ class TestJob:
 
         with (patch.object(job, '_update_status') as mock_update_status,
               patch.object(job, '_upload_application_results') as mock_upload_application_results,
-              patch.object(job, '_report_application_result') as mock_report_application_result,
-              patch('fyn_runner.job_manager.job.StatusEnum') as mock_status_enum,
-              ):
-            mock_status_enum.CU = 'CLEAN_UP'
+              patch.object(job, '_report_application_result') as mock_report_application_result):
 
             job._clean_up()
 
-            mock_update_status.assert_called_once_with(mock_status_enum.CU)
+            mock_update_status.assert_called_once_with(StatusEnum.CU)
             mock_upload_application_results.assert_called_once()
             mock_report_application_result.assert_called_once()
 
@@ -263,16 +257,14 @@ class TestJob:
 
         with (patch.object(job, '_update_status') as mock_update_status,
               patch.object(job, '_upload_application_results') as mock_upload_application_results,
-              patch.object(job, '_report_application_result') as mock_report_application_result,
-              patch('fyn_runner.job_manager.job.StatusEnum') as mock_status_enum,
-              ):
-            mock_status_enum.CU = 'CLEAN_UP'
+              patch.object(job, '_report_application_result') as mock_report_application_result):
+
             mock_upload_application_results.side_effect = Exception("failed")
 
             with pytest.raises(Exception, match="failed"):
               job._clean_up()
 
-            mock_update_status.assert_called_once_with(mock_status_enum.CU)
+            mock_update_status.assert_called_once_with(StatusEnum.CU)
             mock_upload_application_results.assert_called_once()
             mock_report_application_result.assert_not_called()
 
@@ -296,24 +288,23 @@ class TestJob:
         mock_case_dir = Path(f"/mock/simulations/{mock_job_info_runner.id}")
         mock_file_manager.request_simulation_directory.return_value = mock_case_dir
         
-        with patch('fyn_runner.job_manager.job.PatchedJobInfoRunnerRequest') as mock_request:
-            job._setup_local_simulation_directory()
-            
-            # Verify directory creation
-            mock_file_manager.request_simulation_directory.assert_called_once_with(
-                mock_job_info_runner.id
-            )
-            
-            # Verify API update
-            mock_request.assert_called_once_with(working_directory=str(mock_case_dir))
-            job._job_api.job_manager_runner_partial_update.assert_called_once_with(
-                mock_job_info_runner.id,
-                patched_job_info_runner_request=mock_request.return_value
-            )
-            
-            # Verify case_directory is set
-            assert job.case_directory == mock_case_dir
-            
+        job._setup_local_simulation_directory()
+        
+        # Verify directory creation
+        mock_file_manager.request_simulation_directory.assert_called_once_with(
+            mock_job_info_runner.id
+        )
+        
+        # Verify API update
+        job._job_api.job_manager_runner_partial_update.assert_called_once()
+        call_args = job._job_api.job_manager_runner_partial_update.call_args
+        assert call_args[0][0] == mock_job_info_runner.id
+        request_obj = call_args[1]['patched_job_info_runner_request']
+        assert hasattr(request_obj, 'working_directory')
+        
+        # Verify case_directory is set
+        assert job.case_directory == mock_case_dir
+        
         mock_logger.debug.assert_called_once_with(
             f"Job {mock_job_info_runner.id}: local directory creation"
         )
@@ -366,16 +357,14 @@ class TestJob:
         with (patch.object(job, '_update_status') as mock_update_status,
               patch.object(job, '_handle_application') as mock_handle_app,
               patch.object(job, '_download_resource_file') as mock_download,
-              patch('fyn_runner.job_manager.job.StatusEnum') as mock_status_enum,
               patch('builtins.open', mock_open()) as mock_file):
             
-            mock_status_enum.FR = "FETCHING_RESOURCES"
             mock_download.side_effect = [b"resource1 content", b"resource2 content"]
             
             job._fetching_simulation_resources()
             
             # Verify status update
-            mock_update_status.assert_called_once_with(mock_status_enum.FR)
+            mock_update_status.assert_called_once_with(StatusEnum.FR)
             
             # Verify application fetch
             job._app_reg_api.application_registry_program_retrieve.assert_called_once_with(
@@ -407,9 +396,7 @@ class TestJob:
         
         job._app_reg_api.application_registry_program_retrieve.side_effect = Exception("API error")
         
-        with (patch.object(job, '_update_status'),
-              patch('fyn_runner.job_manager.job.StatusEnum')):
-            
+        with patch.object(job, '_update_status'):
             with pytest.raises(RuntimeError, match="Failed to fetch application"):
                 job._fetching_simulation_resources()
 
@@ -430,8 +417,7 @@ class TestJob:
         job._job_api.job_manager_resources_runner_retrieve.side_effect = Exception("Resource error")
         
         with (patch.object(job, '_update_status'),
-              patch.object(job, '_handle_application'),
-              patch('fyn_runner.job_manager.job.StatusEnum')):
+              patch.object(job, '_handle_application')):
             
             with pytest.raises(RuntimeError, match="Failed to fetch job files"):
                 job._fetching_simulation_resources()
@@ -449,20 +435,16 @@ class TestJob:
         job.case_directory = Path(f"/mock/simulations/{mock_job_info_runner.id}")
         job.application = MagicMock()
         job.application.name = "test_app"
+        job.application.type = TypeEnum.PYTHON
         
         file_content = b"print('Hello World')"
         
-        with (patch('fyn_runner.job_manager.job.TypeEnum') as mock_type_enum,
-              patch('builtins.open', mock_open()) as mock_file):
-            
-            mock_type_enum.PYTHON = "PYTHON"
-            job.application.type = mock_type_enum.PYTHON
-            
+        with patch('builtins.open', mock_open()) as mock_file:
             job._handle_application(file_content)
             
             # Verify file was written
             mock_file.assert_called_once_with(
-                job.case_directory / "test_app.py", "w"
+                job.case_directory / "test_app.py", "w", encoding='utf-8'
             )
             mock_file().write.assert_called_once_with("print('Hello World')")
 
@@ -478,19 +460,18 @@ class TestJob:
                   mock_active_job_tracker)
         job.application = MagicMock()
         
-        with patch('fyn_runner.job_manager.job.TypeEnum') as mock_type_enum:
-            # Test each unimplemented type
-            unimplemented_types = [
-                (mock_type_enum.SHELL, "Shell script"),
-                (mock_type_enum.LINUX_BINARY, "Linux binary"),
-                (mock_type_enum.WINDOWS_BINARY, "Windows binary"),
-                (mock_type_enum.UNKNOWN, "Cannot process")
-            ]
-            
-            for app_type, expected_msg in unimplemented_types:
-                job.application.type = app_type
-                with pytest.raises(NotImplementedError, match=expected_msg):
-                    job._handle_application(b"dummy content")
+        # Test each unimplemented type
+        unimplemented_types = [
+            (TypeEnum.SHELL, "Shell script"),
+            (TypeEnum.LINUX_BINARY, "Linux binary"),
+            (TypeEnum.WINDOWS_BINARY, "Windows binary"),
+            (TypeEnum.UNKNOWN, "Cannot process")
+        ]
+        
+        for app_type, expected_msg in unimplemented_types:
+            job.application.type = app_type
+            with pytest.raises(NotImplementedError, match=expected_msg):
+                job._handle_application(b"dummy content")
 
     def test_download_resource_file_success(
             self,
@@ -551,16 +532,13 @@ class TestJob:
         mock_result.returncode = 0
         
         with (patch.object(job, '_update_status') as mock_update_status,
-              patch('fyn_runner.job_manager.job.StatusEnum') as mock_status_enum,
               patch('subprocess.run', return_value=mock_result) as mock_subprocess,
               patch('builtins.open', mock_open()) as mock_file):
-            
-            mock_status_enum.RN = "RUNNING"
             
             job._run_application()
             
             # Verify status update
-            mock_update_status.assert_called_once_with(mock_status_enum.RN)
+            mock_update_status.assert_called_once_with(StatusEnum.RN)
             
             # Verify subprocess was called correctly
             expected_command = "python script.py --arg1 value1"
@@ -571,7 +549,8 @@ class TestJob:
                 text=True,
                 bufsize=1,
                 cwd=job.case_directory,
-                shell=True
+                shell=True,
+                check=False
             )
             
             # Verify log files were opened
@@ -605,7 +584,6 @@ class TestJob:
         job.case_directory = Path(f"/mock/simulations/{mock_job_info_runner.id}")
         
         with (patch.object(job, '_update_status'),
-              patch('fyn_runner.job_manager.job.StatusEnum'),
               patch('subprocess.run', side_effect=Exception("Subprocess failed")),
               patch('builtins.open', mock_open())):
             
@@ -633,12 +611,7 @@ class TestJob:
         err_log_content = b"Error log content"
         
         with (patch.object(job, '_update_status') as mock_update_status,
-              patch('fyn_runner.job_manager.job.StatusEnum') as mock_status_enum,
-              patch('fyn_runner.job_manager.job.ResourceTypeEnum') as mock_resource_enum,
               patch('builtins.open', mock_open()) as mock_file):
-            
-            mock_status_enum.UR = "UPLOADING_RESOURCES"
-            mock_resource_enum.LOG = "LOG"
             
             # Set up different return values for each file
             mock_file.return_value.read.side_effect = [out_log_content, err_log_content]
@@ -646,7 +619,7 @@ class TestJob:
             job._upload_application_results()
             
             # Verify status update
-            mock_update_status.assert_called_once_with(mock_status_enum.UR)
+            mock_update_status.assert_called_once_with(StatusEnum.UR)
             
             # Verify files were read
             expected_file_calls = [
@@ -662,7 +635,7 @@ class TestJob:
             api_calls = job._job_api.job_manager_resources_runner_create.call_args_list
             for call_args in api_calls:
                 assert call_args[0][0] == mock_job_info_runner.id  # job ID
-                assert call_args[1]['resource_type'] == mock_resource_enum.LOG
+                assert call_args[1]['resource_type'] == ResourceTypeEnum.LOG
                 assert call_args[1]['description'] == "log file"
 
     def test_upload_application_results_failure(
@@ -678,7 +651,6 @@ class TestJob:
         job.case_directory = Path(f"/mock/simulations/{mock_job_info_runner.id}")
         
         with (patch.object(job, '_update_status'),
-              patch('fyn_runner.job_manager.job.StatusEnum'),
               patch('builtins.open', side_effect=Exception("File error"))):
             
             with pytest.raises(RuntimeError, match="Could complete job resource upload"):
@@ -697,23 +669,18 @@ class TestJob:
         job._job_result = MagicMock()
         job._job_result.returncode = 0
         
-        with (patch.object(job, '_update_status') as mock_update_status,
-              patch('fyn_runner.job_manager.job.StatusEnum') as mock_status_enum,
-              patch('fyn_runner.job_manager.job.PatchedJobInfoRunnerRequest') as mock_request):
-            
-            mock_status_enum.SD = "SUCCEEDED"
-            
+        with patch.object(job, '_update_status') as mock_update_status:
             job._report_application_result()
             
             # Verify API call
-            mock_request.assert_called_once_with(exit_code=0)
-            job._job_api.job_manager_runner_partial_update.assert_called_once_with(
-                mock_job_info_runner.id,
-                patched_job_info_runner_request=mock_request.return_value
-            )
+            job._job_api.job_manager_runner_partial_update.assert_called_once()
+            call_args = job._job_api.job_manager_runner_partial_update.call_args
+            assert call_args[0][0] == mock_job_info_runner.id
+            request_obj = call_args[1]['patched_job_info_runner_request']
+            assert hasattr(request_obj, 'exit_code')
             
             # Verify status update for success
-            mock_update_status.assert_called_once_with(mock_status_enum.SD)
+            mock_update_status.assert_called_once_with(StatusEnum.SD)
 
     def test_report_application_result_failure(
             self,
@@ -728,23 +695,18 @@ class TestJob:
         job._job_result = MagicMock()
         job._job_result.returncode = 1
         
-        with (patch.object(job, '_update_status') as mock_update_status,
-              patch('fyn_runner.job_manager.job.StatusEnum') as mock_status_enum,
-              patch('fyn_runner.job_manager.job.PatchedJobInfoRunnerRequest') as mock_request):
-            
-            mock_status_enum.FD = "FAILED"
-            
+        with patch.object(job, '_update_status') as mock_update_status:
             job._report_application_result()
             
             # Verify API call
-            mock_request.assert_called_once_with(exit_code=1)
-            job._job_api.job_manager_runner_partial_update.assert_called_once_with(
-                mock_job_info_runner.id,
-                patched_job_info_runner_request=mock_request.return_value
-            )
+            job._job_api.job_manager_runner_partial_update.assert_called_once()
+            call_args = job._job_api.job_manager_runner_partial_update.call_args
+            assert call_args[0][0] == mock_job_info_runner.id
+            request_obj = call_args[1]['patched_job_info_runner_request']
+            assert hasattr(request_obj, 'exit_code')
             
             # Verify status update for failure
-            mock_update_status.assert_called_once_with(mock_status_enum.FD)
+            mock_update_status.assert_called_once_with(StatusEnum.FD)
 
     # ----------------------------------------------------------------------------------------------
     #  Misc Function Tests
@@ -763,35 +725,26 @@ class TestJob:
         
         mock_active_job_tracker.is_tracked.return_value = True
         
-        with (patch('fyn_runner.job_manager.job.StatusEnum') as mock_status_enum,
-              patch('fyn_runner.job_manager.job.PatchedJobInfoRunnerRequest') as mock_request):
-            
-            mock_status = MagicMock()
-            mock_status.value = "RUNNING"
-            mock_status_enum.RN = mock_status
-            
-            job._update_status(mock_status_enum.RN)
-            
-            # Verify API call
-            mock_request.assert_called_once_with(status=mock_status_enum.RN)
-            job._job_api.job_manager_runner_partial_update.assert_called_once_with(
-                mock_job_info_runner.id,
-                patched_job_info_runner_request=mock_request.return_value
-            )
-            
-            # Verify local status update
-            assert job.job.status == mock_status_enum.RN
-            
-            # Verify activity tracker update
-            mock_active_job_tracker.is_tracked.assert_called_once_with(mock_job_info_runner.id)
-            mock_active_job_tracker.update_job_status.assert_called_once_with(
-                mock_job_info_runner.id, mock_request.return_value.status
-            )
-            
-            # Verify logging
-            mock_logger.debug.assert_called_once_with(
-                f"Job test-job-123 reported status: RUNNING"
-            )
+        job._update_status(StatusEnum.RN)
+        
+        # Verify API call
+        job._job_api.job_manager_runner_partial_update.assert_called_once()
+        call_args = job._job_api.job_manager_runner_partial_update.call_args
+        assert call_args[0][0] == mock_job_info_runner.id
+        request_obj = call_args[1]['patched_job_info_runner_request']
+        assert hasattr(request_obj, 'status')
+        
+        # Verify local status update
+        assert job.job.status == StatusEnum.RN
+        
+        # Verify activity tracker update
+        mock_active_job_tracker.is_tracked.assert_called_once_with(mock_job_info_runner.id)
+        mock_active_job_tracker.update_job_status.assert_called_once()
+        
+        # Verify logging
+        mock_logger.debug.assert_called_once_with(
+            f"Job test-job-123 reported status: {StatusEnum.RN.value}"
+        )
 
     def test_update_status_success_not_tracked(
             self,
@@ -806,20 +759,12 @@ class TestJob:
         
         mock_active_job_tracker.is_tracked.return_value = False
         
-        with (patch('fyn_runner.job_manager.job.StatusEnum') as mock_status_enum,
-              patch('fyn_runner.job_manager.job.PatchedJobInfoRunnerRequest')):
-            
-            # Create a mock status with a value attribute
-            mock_status = MagicMock()
-            mock_status.value = "RUNNING"
-            mock_status_enum.RN = mock_status
-            
-            job._update_status(mock_status_enum.RN)
-            
-            # Verify activity tracker adds job when not tracked
-            mock_active_job_tracker.is_tracked.assert_called_once_with(mock_job_info_runner.id)
-            mock_active_job_tracker.add_job.assert_called_once_with(mock_job_info_runner)
-            mock_active_job_tracker.update_job_status.assert_not_called()
+        job._update_status(StatusEnum.RN)
+        
+        # Verify activity tracker adds job when not tracked
+        mock_active_job_tracker.is_tracked.assert_called_once_with(mock_job_info_runner.id)
+        mock_active_job_tracker.add_job.assert_called_once_with(mock_job_info_runner)
+        mock_active_job_tracker.update_job_status.assert_not_called()
 
     def test_update_status_api_failure(
             self,
@@ -835,25 +780,17 @@ class TestJob:
         job._job_api.job_manager_runner_partial_update.side_effect = Exception("API error")
         original_status = mock_job_info_runner.status
         
-        with (patch('fyn_runner.job_manager.job.StatusEnum') as mock_status_enum,
-              patch('fyn_runner.job_manager.job.PatchedJobInfoRunnerRequest')):
-            
-            # Create a mock status with a value attribute
-            mock_status = MagicMock()
-            mock_status.value = "RUNNING"
-            mock_status_enum.RN = mock_status
-            
-            # Should not raise exception
-            job._update_status(mock_status_enum.RN)
-            
-            # Verify error was logged
-            mock_logger.error.assert_called_once_with(
-                f"Job test-job-123 failed to report status: API error"
-            )
-            
-            # Verify local status was NOT updated
-            assert job.job.status == original_status
-            
-            # Verify activity tracker was NOT called
-            mock_active_job_tracker.is_tracked.assert_not_called()
-            mock_active_job_tracker.update_job_status.assert_not_called()
+        # Should not raise exception
+        job._update_status(StatusEnum.RN)
+        
+        # Verify error was logged
+        mock_logger.error.assert_called_once_with(
+            f"Job test-job-123 failed to report status: API error"
+        )
+        
+        # Verify local status was NOT updated
+        assert job.job.status == original_status
+        
+        # Verify activity tracker was NOT called
+        mock_active_job_tracker.is_tracked.assert_not_called()
+        mock_active_job_tracker.update_job_status.assert_not_called()

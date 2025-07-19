@@ -15,7 +15,6 @@
 
 import atexit
 import json
-import sys
 import threading
 import time
 from unittest.mock import MagicMock, patch, ANY
@@ -24,25 +23,7 @@ import pytest
 import requests
 
 from fyn_runner.server.server_proxy import ServerProxy
-
-# Create a mock fyn_api_client module
-mock_fac = MagicMock()
-mock_fac.Configuration = MagicMock
-mock_fac.ApiClient = MagicMock
-mock_fac.RunnerManagerApi = MagicMock
-mock_fac.ApplicationRegistryApi = MagicMock
-mock_fac.JobManagerApi = MagicMock
-# Create proper enum-like objects with .value attribute for WebSocket runner states
-mock_id_enum = MagicMock()
-mock_id_enum.value = "IDLE"
-mock_of_enum = MagicMock()
-mock_of_enum.value = "OFFLINE"
-
-mock_fac.StateEnum = MagicMock()
-mock_fac.StateEnum.ID = mock_id_enum
-mock_fac.StateEnum.OF = mock_of_enum
-mock_fac.PatchedRunnerInfoRequest = MagicMock
-sys.modules['fyn_api_client'] = mock_fac
+import fyn_api_client as fac
 
 
 class TestServerProxy:
@@ -127,7 +108,7 @@ class TestServerProxy:
         server_proxy._mock_thread.start.assert_called_once()
 
         # Check that status was reported
-        server_proxy._mock_report_status.assert_called_once_with(mock_fac.StateEnum.ID)
+        server_proxy._mock_report_status.assert_called_once_with(fac.StateEnum.ID)
 
         # Check API client and runner API setup
         assert server_proxy._api_client is not None
@@ -256,7 +237,7 @@ class TestServerProxy:
         """Test successful status reporting."""
         server_proxy._runner_api = MagicMock()
 
-        server_proxy._report_status(mock_fac.StateEnum.ID)
+        server_proxy._report_status(fac.StateEnum.ID)
 
         server_proxy.logger.debug.assert_called_once()
         server_proxy._runner_api.runner_manager_runner_partial_update.assert_called_once_with(
@@ -271,7 +252,7 @@ class TestServerProxy:
             requests.exceptions.RequestException("Connection failed")
 
         with pytest.raises(ConnectionError, match="Failed to report status"):
-            server_proxy._report_status(mock_fac.StateEnum.ID)
+            server_proxy._report_status(fac.StateEnum.ID)
 
         server_proxy.logger.error.assert_called_once()
 
@@ -673,9 +654,9 @@ class TestServerProxy:
             ServerProxy(mock_logger, mock_file_manager, mock_configuration)
 
             # Should register cleanup with atexit
-            mock_register.assert_called_once_with(ANY, mock_fac.StateEnum.OF)
+            mock_register.assert_called_once_with(ANY, fac.StateEnum.OF)
 
             # The first argument should be the _report_status method
             call_args = mock_register.call_args[0]
             assert len(call_args) == 2
-            assert call_args[1] == mock_fac.StateEnum.OF
+            assert call_args[1] == fac.StateEnum.OF
