@@ -13,10 +13,10 @@
 
 import json
 import platform
-import psutil
 import re
 
 from cpuinfo import get_cpu_info
+import psutil
 
 from fyn_runner.server.message import HttpMethod, Message
 

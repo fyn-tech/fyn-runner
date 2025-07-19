@@ -6,7 +6,7 @@ dependencies = [
     "nvidia-ml-py",
     "psutil",
     "py-cpuinfo",
-    "pydantic",
+    "pydantic>=2.0",
     "pyyaml",
     "requests",
     "websocket-client",
@@ -48,10 +48,21 @@ disable = [
     "too-many-locals",
     "too-many-return-statements",
     "too-many-positional-arguments",
-    "too-many-public-methods",    
+    "too-many-public-methods",
 ]
 
 [tool.pylint.typecheck]
 extension-pkg-whitelist = [
     "fyn_api_client",
+]
+
+ignored-modules = [
+    "fyn_api_client",
+    "fyn_api_client.models",
+    "fyn_api_client.models.status_enum",
+    "fyn_api_client.models.resource_type_enum",
+    "fyn_api_client.models.job_info_runner",
+    "fyn_api_client.models.app",
+    "fyn_api_client.models.type_enum",
+    "fyn_api_client.models.patched_job_info_runner_request",
 ]
