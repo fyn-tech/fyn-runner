@@ -179,7 +179,7 @@ class Job:
             self._job_api.job_manager_runner_partial_update(self.job.id,
                                                             patched_job_info_runner_request=jir)
         except Exception as e:
-            raise RuntimeError(f"Could complete a simulation directory setup: {e}")
+            raise RuntimeError(f"Could complete a simulation directory setup: {e}") from e
 
     def _fetching_simulation_resources(self):
         """Fetches both the application file and all related job resources for the application file
@@ -201,7 +201,7 @@ class Job:
             file = self._app_reg_api.application_registry_program_retrieve(self.job.application_id)
             self._handle_application(file)
         except Exception as e:
-            raise RuntimeError(f"Failed to fetch application: {e}")
+            raise RuntimeError(f"Failed to fetch application: {e}") from e
 
         # 2. Fetch other files
         try:
@@ -212,7 +212,7 @@ class Job:
                 with open(file_path, 'wb') as f:
                     f.write(file_content)
         except Exception as e:
-            raise RuntimeError(f"Failed to fetch job files: {e}")
+            raise RuntimeError(f"Failed to fetch job files: {e}") from e
 
     def _handle_application(self, file):
         """Function to interpret the received application file and save it to the working directory.
@@ -223,7 +223,8 @@ class Job:
 
         match self.application.type:
             case TypeEnum.PYTHON:
-                with open(self.case_directory / (self.application.name + ".py"), "w") as f:
+                with open(self.case_directory / (self.application.name + ".py"), "w",
+                          encoding='utf-8') as f:
                     f.write(file.decode('utf-8'))
             case TypeEnum.SHELL:
                 raise NotImplementedError("Shell script handling not yet supported.")
@@ -251,7 +252,7 @@ class Job:
         try:
             return self._job_api.job_manager_resources_runner_download_retrieve(resource_id)
         except Exception as e:
-            raise RuntimeError(e)
+            raise RuntimeError(e) from e
 
     # ----------------------------------------------------------------------------------------------
     #  Run/Execution Functions
@@ -286,11 +287,12 @@ class Job:
                     text=True,
                     bufsize=1,
                     cwd=self.case_directory,
-                    shell=True
+                    shell=True,
+                    check=False
                 )
             self.logger.info(f"Job {self.job.id} completed.")
         except Exception as e:
-            raise RuntimeError(f"Exception while executing application: {e}")
+            raise RuntimeError(f"Exception while executing application: {e}") from e
 
     # ----------------------------------------------------------------------------------------------
     #  Clean up functions Functions
@@ -324,7 +326,7 @@ class Job:
                     description="log file",
                     original_file_path=str(file_path))
         except Exception as e:
-            raise RuntimeError(f"Could complete job resource upload: {e}")
+            raise RuntimeError(f"Could complete job resource upload: {e}") from e
 
     def _report_application_result(self):
         """Reports the final state of the run application (determined by the exit code).

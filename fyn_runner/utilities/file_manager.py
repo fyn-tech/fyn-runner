@@ -107,22 +107,21 @@ class FileManager:
 
         Args:
           job_id(str): The job id hash as a string.
-        
+
         Returns:
             Path: To the newly created simulation directory.
-          
+
         Raises:
             ValueError: If the job_id contains 'path seperators'
             RuntimeError: If directory creation fails.
         """
         if '/' in job_id or '\\' in job_id:
             raise ValueError("job_id cannot contain path separators")
-        
+
         case_directory = self.simulation_dir / job_id
-        
+
         try:
             case_directory.mkdir(exist_ok=True, parents=True)
             return case_directory
         except Exception as e:
             raise RuntimeError(f"Failed to create directory {case_directory}: {e}") from e
-        

@@ -69,7 +69,7 @@ def create_logger(
             '[%(filename)s::%(lineno)d]:%(reset)s %(white)s%(message)s%(reset)s',
             log_colors={
                 'DEBUG': 'blue',
-                'INFO': 'green', 
+                'INFO': 'green',
                 'WARNING': 'yellow',
                 'ERROR': 'red',
                 'CRITICAL': 'red,bg_white',
@@ -111,8 +111,8 @@ def create_logger(
     logger.info(f"Logging at {logging.getLevelName(logger.level)} level")
     if develop:
         if HAS_COLORLOG:
-            logger.info("Logging in development mode with colors (console only," \
-            " files are plain text)")
+            logger.info("Logging in development mode with colors (console only,"
+                        " files are plain text)")
         else:
             logger.info("Logging in development mode (install 'colorlog' for colors)")
 

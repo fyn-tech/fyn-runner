@@ -11,11 +11,12 @@
 # You should have received a copy of the GNU General Public License along with this program. If not,
 #  see <https://www.gnu.org/licenses/>.
 
-from cpuinfo import get_cpu_info
 import json
 import platform
 import psutil
 import re
+
+from cpuinfo import get_cpu_info
 
 from fyn_runner.server.message import HttpMethod, Message
 
@@ -77,31 +78,32 @@ def _get_os_info():
         'system_architecture': platform.machine(),
     }
 
+
 def _parse_cache_size(cache_str):
     """
     Parse cache size string (e.g., "11.5 MiB") and convert to bytes.
-    
+
     Args:
         cache_str: String representation of cache size
-        
+
     Returns:
         int: Cache size in bytes, or None if parsing fails
     """
     if not cache_str or cache_str == 'None':
         return None
-        
+
     # Handle cases where it's already a number
     if isinstance(cache_str, (int, float)):
         return int(cache_str)
-    
+
     # Parse string like "11.5 MiB", "512 KiB", "32 MB", etc.
     match = re.match(r'(\d+(?:\.\d+)?)\s*([KMGT]i?B?)', str(cache_str), re.IGNORECASE)
     if not match:
         return None
-        
+
     value = float(match.group(1))
     unit = match.group(2).upper()
-    
+
     # Convert to bytes
     multipliers = {
         'B': 1,
@@ -112,7 +114,7 @@ def _parse_cache_size(cache_str):
         # Handle cases without 'B'
         'K': 1024, 'M': 1024**2, 'G': 1024**3, 'T': 1024**4
     }
-    
+
     multiplier = multipliers.get(unit, 1)
     return int(value * multiplier)
 

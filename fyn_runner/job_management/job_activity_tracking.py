@@ -12,8 +12,9 @@
 #  see <https://www.gnu.org/licenses/>.
 
 import threading
-from fyn_api_client.models.status_enum import StatusEnum
 from enum import Enum
+
+from fyn_api_client.models.status_enum import StatusEnum
 
 
 class ActivityState(Enum):

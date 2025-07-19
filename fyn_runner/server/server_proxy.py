@@ -104,13 +104,13 @@ class ServerProxy:
             operations.
 
         Raises:
-            Exception: If API client creation fails.
+            RuntimeError: If API client creation fails.
         """
         try:
             job_api = fac.ApplicationRegistryApi(self._api_client)
         except Exception as e:
             self.logger.error(f"Error while configuring the client api: {str(e)}")
-            raise Exception(f"Error while configuring the client api: {str(e)}") from e
+            raise RuntimeError(f"Error while configuring the client api: {str(e)}") from e
         return job_api
 
     def create_job_manager_api(self):
@@ -120,13 +120,13 @@ class ServerProxy:
             fyn_api_client.JobManagerApi: Configured API client for job management operations.
 
         Raises:
-            Exception: If API client creation fails.
+            RuntimeError: If API client creation fails.
         """
         try:
             job_api = fac.JobManagerApi(self._api_client)
         except Exception as e:
             self.logger.error(f"Error while configuring the client api: {str(e)}")
-            raise Exception(f"Error while configuring the client api: {str(e)}") from e
+            raise RuntimeError(f"Error while configuring the client api: {str(e)}") from e
         return job_api
 
     def create_runner_manager_api(self):
@@ -136,13 +136,13 @@ class ServerProxy:
             fyn_api_client.RunnerManagerApi: Configured API client for runner management operations.
 
         Raises:
-            Exception: If API client creation fails.
+            RuntimeError: If API client creation fails.
         """
         try:
             runner_api = fac.RunnerManagerApi(self._api_client)
         except Exception as e:
             self.logger.error(f"Error while configuring the client api: {str(e)}")
-            raise Exception(f"Error while configuring the client api: {str(e)}") from e
+            raise RuntimeError(f"Error while configuring the client api: {str(e)}") from e
         return runner_api
 
     def register_observer(self, message_type, call_back):
@@ -200,7 +200,7 @@ class ServerProxy:
             api_client.set_default_header("Authorization", f"Token {str(self.token)}")
         except Exception as e:
             self.logger.error(f"Error while configuring the client api: {str(e)}")
-            raise Exception(f"Error while configuring the client api: {str(e)}") from e
+            raise RuntimeError(f"Error while configuring the client api: {str(e)}") from e
         return api_client
 
     def _report_status(self, status):

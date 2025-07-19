@@ -13,7 +13,6 @@
 
 import time
 from queue import PriorityQueue, Empty
-from pathlib import Path
 from threading import Thread
 
 from fyn_api_client.models.patched_job_info_runner_request import PatchedJobInfoRunnerRequest
@@ -104,7 +103,7 @@ class JobManager:
         try:
             api_response = self.job_api.job_manager_runner_list()
         except Exception as e:
-            self.logger.error("Exception when calling JobManagerApi: %s\n" % e)
+            self.logger.error(f"Exception when calling JobManagerApi: {e}")
 
         if api_response is not None:
             for job in api_response:
@@ -129,7 +128,6 @@ class JobManager:
             and status updates from the backend.
         """
         self.logger.warning("Attach job listener not implemented, wip")
-        pass
 
     # ----------------------------------------------------------------------------------------------
     #  Job Methods
@@ -226,7 +224,7 @@ class JobManager:
                 if self._job_activity_tracker.is_tracked(job_info.id):
                     self._job_activity_tracker.remove_job(job_info.id)
             except BaseException:
-                self.logger.error(f"Job manager failed to reset job {self.job.id} with: {e}")
+                self.logger.error(f"Job manager failed to reset job {job_info.id} with: {e}")
 
     def _cleanup_finished_threads(self):
         """Clean up completed job threads to prevent resource leaks.

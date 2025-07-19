@@ -14,9 +14,10 @@ dependencies = [
 
 [project.optional-dependencies]
 dev = [
-    "pylint",
     "autopep8",
     "flake8",
+    "pylint",
+    "pylint-pydantic",
     "pre-commit",
 ]
 
@@ -31,15 +32,23 @@ aggressive = 2
 [tool.flake8]
 max-line-length = 100
 
+[tool.pylint.main]
+load-plugins = [
+    "pylint_pydantic",
+]
+
 [tool.pylint.messages_control]
 disable = [
     "missing-module-docstring",
     "broad-exception-caught",
     "logging-fstring-interpolation",
+    "too-few-public-methods",
     "too-many-arguments",
-    "too-many-positional-arguments",
     "too-many-instance-attributes",
-    "too-many-public-methods"
+    "too-many-locals",
+    "too-many-return-statements",
+    "too-many-positional-arguments",
+    "too-many-public-methods",    
 ]
 
 [tool.pylint.typecheck]
