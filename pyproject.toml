@@ -10,7 +10,6 @@ dependencies = [
     "pyyaml",
     "requests",
     "websocket-client",
-    "fyn_api_client"
 ]
 
 [project.optional-dependencies]
@@ -19,6 +18,10 @@ dev = [
     "autopep8",
     "flake8",
     "pre-commit",
+]
+
+production = [
+    "fyn_api_client"
 ]
 
 [tool.autopep8]
