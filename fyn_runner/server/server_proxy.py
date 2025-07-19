@@ -15,24 +15,50 @@ import atexit
 import json
 import threading
 import time
-from concurrent.futures import Future
-from urllib.parse import urljoin
-
 import requests
 from websocket import WebSocketApp
 
-from fyn_runner.server.message import HttpMethod, Message
-from fyn_runner.server.message_queue import MessageQueue
+import fyn_api_client as fac
 
 
 class ServerProxy:
-    """todo
+    """Factory for REST API clients and WebSocket communication manager.
 
-    TODO: Package locks and data into a generalised class.
+    This class serves a dual purpose: it acts as a factory for creating OpenAPI-generated REST
+    client instances for communicating with the Django backend, and manages a persistent WebSocket
+    connection for real-time message handling using an observer pattern.
+
+    The proxy automatically reports runner status changes to the backend and handles WebSocket
+    reconnection. It maintains thread-safe observer registration for different message types
+    received via WebSocket.
+
+    TODO: This class should ideally be refactored into separate rest_factory and web_socket_proxy
+          components in the future.
+
+    Attributes:
+        running (bool): Flag indicating if the proxy should continue operating.
+        name (str): Runner name from configuration.
+        id (str): Runner ID for backend identification.
+        token (str): Authentication token for API requests.
     """
 
     def __init__(self, logger, file_manager, configuration):
-        """todo"""
+        """Initialize the ServerProxy with backend communication capabilities.
+
+        Sets up REST API client configuration, initializes WebSocket connection, and starts the
+        background WebSocket handler thread. Automatically reports initial status and registers
+        cleanup handler.
+
+        Args:
+            logger: Logger instance for debugging and error reporting.
+            file_manager: File manager instance (injected dependency).
+            configuration: Configuration object containing runner details.
+                Must have attributes: name, id, token, report_interval.
+
+        Raises:
+            Exception: If API client configuration fails.
+            ConnectionError: If initial status reporting fails.
+        """
 
         # injected objects
         self.logger = logger
@@ -40,22 +66,18 @@ class ServerProxy:
 
         # configs
         self.name = configuration.name
-        self.id = configuration.id
-        self.token = configuration.token
-        self.api_url = str(configuration.api_url).rstrip('/')
-        self.api_port = configuration.api_port
+        self.id = str(configuration.id)
+        self.token = str(configuration.token)
         self.report_interval = configuration.report_interval
+        self.api_config = fac.Configuration()
+        logger.warning("report_interval not used, wip.")
 
         # Proxy Status
         self.running: bool = True
 
         # HTTP message handing and related
-        self._queue: MessageQueue = MessageQueue()
-        self._new_send_message: threading.Event = threading.Event()
-        self._send_thread: threading.Thread = threading.Thread(target=self._send_handler)
-        self._send_thread.daemon = True
-        self._response_futures = {}
-        self._response_futures_lock = threading.RLock()
+        self._api_client = self._configure_client_api()
+        self._runner_api = self.create_runner_manager_api()
 
         # Websocket message handling and related
         self._observers = {}
@@ -66,73 +88,76 @@ class ServerProxy:
         self._ws_thread.daemon = True
 
         # initialisation procedure
-        self._fetch_api()
-        self._raise_connection()  # don't catch here, allow propagation at initialisation.
-        atexit.register(self._report_status, 'offline')
-        self._send_thread.start()
+        self._report_status(fac.StateEnum.ID)
+        atexit.register(self._report_status, fac.StateEnum.OF)
         self._ws_thread.start()
 
-    def push_message(self, message):
-        """
-        Add a message to the outgoing queue (non-blocking), and notifies the sending thread.
+    # ----------------------------------------------------------------------------------------------
+    #  Server Proxy Interface
+    # ----------------------------------------------------------------------------------------------
 
-        Args:
-            message (Message): The message to be sent
+    def create_application_registry_api(self):
+        """Create and return an ApplicationRegistryApi client instance.
 
         Returns:
-            None
+            fyn_api_client.ApplicationRegistryApi: Configured API client for application registry
+            operations.
 
         Raises:
-            Exception: If the message couldn't be added to the queue.
+            RuntimeError: If API client creation fails.
         """
         try:
-            self.logger.debug(f"Pushing message {message.msg_id}")
-            self._queue.push_message(message)
-            self._new_send_message.set()
+            job_api = fac.ApplicationRegistryApi(self._api_client)
         except Exception as e:
-            self.logger.error(f"Failed to push message ({message.msg_id}): {e}")
-            raise  # ensures caller knows
+            self.logger.error(f"Error while configuring the client api: {str(e)}")
+            raise RuntimeError(f"Error while configuring the client api: {str(e)}") from e
+        return job_api
 
-    def push_message_with_response(self, message):
-        """
-        Add a message to the outgoing queue and return a Future for the response.
-
-        Args:
-            message (Message): The message to be sent
+    def create_job_manager_api(self):
+        """Create and return a JobManagerApi client instance.
 
         Returns:
-            Future: A Future that will contain the server response
+            fyn_api_client.JobManagerApi: Configured API client for job management operations.
 
         Raises:
-            Exception: If the message couldn't be added to the queue or the event couldn't be set.
+            RuntimeError: If API client creation fails.
         """
-
-        new_future = Future()
-        with self._response_futures_lock:
-            self._response_futures[message.msg_id] = new_future
-
         try:
-            self.push_message(message)
-            return new_future
-        except Exception:  # logger would have reported error, just clean future.
-            with self._response_futures_lock:
-                self._response_futures.pop(message.msg_id)
-            raise  # ensures caller knows
+            job_api = fac.JobManagerApi(self._api_client)
+        except Exception as e:
+            self.logger.error(f"Error while configuring the client api: {str(e)}")
+            raise RuntimeError(f"Error while configuring the client api: {str(e)}") from e
+        return job_api
+
+    def create_runner_manager_api(self):
+        """Create and return a RunnerManagerApi client instance.
+
+        Returns:
+            fyn_api_client.RunnerManagerApi: Configured API client for runner management operations.
+
+        Raises:
+            RuntimeError: If API client creation fails.
+        """
+        try:
+            runner_api = fac.RunnerManagerApi(self._api_client)
+        except Exception as e:
+            self.logger.error(f"Error while configuring the client api: {str(e)}")
+            raise RuntimeError(f"Error while configuring the client api: {str(e)}") from e
+        return runner_api
 
     def register_observer(self, message_type, call_back):
-        """
-        Register a callback function to be invoked when messages of the specified type are received.
+        """Register a callback function for WebSocket messages of a specific type.
 
-        Each message type can have only one observer at a time. Attempting to register a second
-        observer for the same message type will raise a RuntimeError.
+        Each message type can have only one observer at a time. The callback will be invoked
+        whenever a WebSocket message of the specified type is received.
 
         Args:
-            message_type (str): The type of message to observe
-            call_back (callable): Function to be called when a message of this type is received.
-                                Should accept a message parameter and return an optional response.
+            message_type (str): The type of message to observe.
+            call_back (callable): Function to call when message is received. Should accept a message
+                dict parameter and return an optional response dict.
 
         Raises:
-            RuntimeError: If an observer is already registered for this message type
+            RuntimeError: If an observer is already registered for this message type.
         """
         with self._observers_lock:
             if message_type not in self._observers:
@@ -142,14 +167,13 @@ class ServerProxy:
                 raise RuntimeError(f"Trying to add to existing observer {message_type}")
 
     def deregister_observer(self, message_type):
-        """
-        Remove a previously registered observer for the specified message type.
+        """Remove a previously registered observer for the specified message type.
 
         Args:
-            message_type (str): The type of message for which to remove the observer
+            message_type (str): The type of message for which to remove the observer.
 
         Raises:
-            RuntimeError: If no observer is registered for this message type
+            RuntimeError: If no observer is registered for this message type.
         """
         with self._observers_lock:
             if message_type in self._observers:
@@ -158,202 +182,66 @@ class ServerProxy:
             else:
                 raise RuntimeError(f"Trying to remove non-existant observer {message_type}")
 
-    def _report_status(self, status, request_timeout=10):
-        """
-        Report the runner's current status to the server.
+    # ----------------------------------------------------------------------------------------------
+    #  Internal Backend HTTP Reporting Methods
+    # ----------------------------------------------------------------------------------------------
 
-        Args:
-            status (str): The status to report to the server. Common values include:
-            - 'idle': Runner is online but not processing any jobs
-            - 'busy': Runner is currently processing a job
-            - 'offline': Runner is shutting down
-            request_timeout (int, optional): Timeout value in seconds for the HTTP request.
-            Defaults to 10 seconds.
+    def _configure_client_api(self):
+        """Configure and return the base API client with authentication.
 
         Returns:
-            None
+            fyn_api_client.ApiClient: Configured API client with authorization header.
 
         Raises:
-            ConnectionError: If any network-related errors occur during the status update,
-                including connection errors, timeouts, or HTTP error responses.
+            Exception: If API client configuration fails.
+        """
+        try:
+            api_client = fac.ApiClient(self.api_config)
+            api_client.set_default_header("Authorization", f"Token {str(self.token)}")
+        except Exception as e:
+            self.logger.error(f"Error while configuring the client api: {str(e)}")
+            raise RuntimeError(f"Error while configuring the client api: {str(e)}") from e
+        return api_client
+
+    def _report_status(self, status):
+        """Report the runner's current status to the backend server.
+
+        Args:
+            status (fyn_api_client.StateEnum): The status to report to the server.
+            request_timeout (int, optional): HTTP request timeout in seconds. Defaults to 10.
+
+        Raises:
+            ConnectionError: If the HTTP request to report status fails.
         """
 
+        self.logger.debug(f"Reporting status {status.value}")
         try:
-            self._send_message(Message.json_message(
-                f"{self.api_url}:{self.api_port}/runner_manager/report_status/",
-                HttpMethod.PATCH,
-                {"state": str(status)},
-            ), request_timeout=request_timeout)
+            self._runner_api.runner_manager_runner_partial_update(
+                id=self.id,
+                patched_runner_info_request=fac.PatchedRunnerInfoRequest(state=status),
+            )
         except requests.exceptions.RequestException as e:
             self.logger.error(f"Failed to report status '{status}': {str(e)}")
             raise ConnectionError(f"Failed to report status '{status}': {str(e)}") from e
 
-    def _raise_connection(self):
-        """
-        This method is called during the initialization of the ServerProxy. A successful call
-        indicates that the runner has been registered with the server and is ready to receive jobs.
-
-        Returns:
-            None
-
-        Raises:
-            ConnectionError: If the connection to the server cannot be established, this method will
-                propagate any ConnectionError raised by _report_status.
-
-        """
-
-        self.logger.info(f"Contacting {self.api_url}...")
-        self._report_status('idle')
-
-    def _fetch_api(self):
-        """TODO"""
-        self.logger.info("fetching backend API... STILL TO DO")
-
-    def _send_handler(self):
-        """
-        Background kernel for thread that processes outgoing messages and handles periodic status
-        reporting.
-
-        This method runs in a separate thread and:
-            1. Waits for new messages to be added to the queue or timeout to occur
-            2. Processes all available messages when notified
-            3. Sends periodic status reports to the server based on report_interval
-
-        The thread continues running until self._running is set to False.
-        """
-
-        next_report_time = time.time() + self.report_interval
-        while self.running:
-            wait_time = max(0.0, next_report_time - time.time())
-            message_added = self._new_send_message.wait(timeout=wait_time)
-
-            # Check and send all messages
-            if message_added:
-                self._new_send_message.clear()
-                while not self._queue.is_empty():
-                    message = self._queue.get_next_message()
-                    try:
-                        self._send_message(message)
-                    except Exception as e:
-                        self.logger.error(f"Error sending message ({message.msg_id}): {e}")
-
-            # Check if we need to report status
-            current_time = time.time()
-            if current_time >= next_report_time:
-                try:
-                    self._report_status('idle')
-                except Exception:
-                    pass  # error reported in _report_status, no further action required
-
-                next_report_time = current_time + self.report_interval
-
-    def _send_message(self, message, request_timeout=10):
-        """
-        Send the parsed message to the backend.
-
-        Constructs and sends the full HTTP request based on the provided Message object. Handles
-        various message types (JSON, file) and HTTP methods.
-
-        Args:
-            message (Message): The message to send
-            request_timeout (int, optional): Timeout in seconds for the request. Defaults to 10.
-
-        Returns:
-            dict: JSON response from the server
-
-        Raises:
-            FileNotFoundError: If a file message references a non-existent file
-            ValueError: If the HTTP method is not supported
-            requests.exceptions.RequestException: For any network-related errors
-        """
-
-        kwargs = {
-            "url": urljoin(str(message.api_path), str(self.id)),
-            "headers": {"id": str(self.id), "token": str(self.token)},
-            "params": message.params,
-            "timeout": request_timeout
-        }
-
-        if message.header:
-            kwargs["headers"].update(message.header)
-
-        if message.file_path:
-            if not message.file_path.exists():
-                raise FileNotFoundError(f"File not found: {message.file_path}")
-            with open(message.file_path, 'rb') as f:
-                kwargs["files"] = {'file': f}
-        elif message.json_data:
-            kwargs["json"] = message.json_data
-
-        response: requests.Response = None
-        self.logger.debug(f"Sending message {message.msg_id},  {kwargs}")
-        match message.method:
-            case HttpMethod.GET:
-                response = requests.get(**kwargs)
-            case HttpMethod.POST:
-                response = requests.post(**kwargs)
-            case HttpMethod.PUT:
-                response = requests.put(**kwargs)
-            case HttpMethod.PATCH:
-                response = requests.patch(**kwargs)
-            case HttpMethod.DELETE:
-                response = requests.delete(**kwargs)
-            case _:
-                raise ValueError(f"Unsupported HTTP method: {message.method.name}")
-
-        try:
-            response.raise_for_status()
-            result = response.json()
-            self._handle_response_future(message, response)
-            self.logger.info(f"HTTP request successful for message ({message.msg_id}): "
-                             f"{message.method.name} {message.api_path}")
-        except requests.exceptions.HTTPError:
-            result = response.json()
-            self.logger.error(f"HTTP request error for message ({message.msg_id}): "
-                              f"status_code: {response.status_code}, "
-                              f"server message: {result['message']}")
-
-        self._handle_response_future(message, response)
-
-        return result
-
-    def _handle_response_future(self, message, response):
-        """
-        Handles the response from the backend to the future result.
-
-        Args:
-            message(Message): The message store the result
-            response(Response): The repose from the backend server.
-
-        Raises:
-            Exception: For any issue in trying to decode or set the server response.
-        """
-
-        with self._response_futures_lock:
-            future = self._response_futures.pop(message.msg_id, None)
-            if future:
-                self.logger.debug(f"Updating future for message {message.msg_id}")
-                try:
-                    future.set_result(response.json())
-                except Exception as e:
-                    self.logger.error("Error setting future result for message "
-                                      f"{message.msg_id}: {e}")
-                    future.set_exception(e)
+    # ----------------------------------------------------------------------------------------------
+    #  Internal Web Socket Methods
+    # ----------------------------------------------------------------------------------------------
 
     def _receive_handler(self):
+        """Background thread handler for WebSocket connection management.
+
+        Runs in a separate daemon thread and handles:
+        - Establishing WebSocket connection to the backend
+        - Automatic reconnection on connection loss
+        - WebSocket error handling and recovery
+
+        Continues attempting connection until self.running is set to False.
         """
-        Background thread handler that manages WebSocket connection to the backend server.
 
-        This method runs in a separate daemon thread and is responsible for:
-        1. Establishing and maintaining the WebSocket connection
-        2. Reconnecting if the connection is lost
-        3. Handles any WebSocket errors
-
-        The thread continues retrying the connection until self._running is set to False.
-        """
-
-        ws_url = self.api_url.replace('http://', 'ws://').replace('https://', 'wss://') \
-            + f":{self.api_port}/ws/runner_manager/{self.id}"
+        [protocol, url, port] = self.api_config.host.split(":")
+        protocol = "ws:" if protocol == "http" else "wss:"
+        ws_url = f"{protocol}{url}:{port}/ws/runner_manager/{self.id}"
         self.logger.debug(f"Starting WebSocket on {ws_url}")
 
         while self.running:
@@ -377,15 +265,14 @@ class ServerProxy:
                 time.sleep(5)
 
     def _handle_ws_message(self, _ws, message_data):
-        """
-        Process incoming WebSocket messages from the server.
+        """Process incoming WebSocket messages and route to appropriate observers.
 
-        This callback is invoked when a message is received over the WebSocket connection.
-        It parses the message, identifies its type, and routes it to the appropriate observer.
+        Parses JSON message data, validates required fields, and invokes the registered observer
+        callback for the message type. Sends response back to server.
 
         Args:
-            _ws(WebSocketApp): The WebSocket instance that received the message
-            message_data(str): The raw message string received from the server
+            _ws (WebSocketApp): The WebSocket instance that received the message.
+            message_data (str): Raw JSON message string from the server.
         """
 
         message = json.loads(message_data)
@@ -432,52 +319,43 @@ class ServerProxy:
             self._ws_error_response(message_id, error_msg)
 
     def _on_ws_open(self, _ws):
-        """
-        Callback invoked when the WebSocket connection is established.
+        """WebSocket connection established callback.
 
         Args:
-            _ws(WebSocketApp): The WebSocket instance that was opened
+            _ws (WebSocketApp): The WebSocket instance that was opened.
         """
         self.logger.info("WebSocket connection established")
         self._ws_connected = True
 
     def _on_ws_close(self, _ws, close_status_code, close_msg):
-        """
-        Callback invoked when the WebSocket connection is closed.
+        """WebSocket connection closed callback.
 
         Args:
-            _ws(WebSocketApp): The WebSocket instance that was closed
-            close_status_code(int): The status code indicating why the connection was closed
-            close_msg(str): The message associated with the close status
+            _ws (WebSocketApp): The WebSocket instance that was closed.
+            close_status_code (int): Status code indicating why connection was closed.
+            close_msg (str): Message associated with the close status.
         """
         self.logger.info(f"WebSocket connection closed: {close_status_code} {close_msg}")
         self._ws_connected = False
 
     def _on_ws_error(self, _ws, error):
-        """
-        Callback invoked when a WebSocket error occurs.
+        """WebSocket error callback.
 
         Args:
-            _ws(WebSocketApp): The WebSocket instance that encountered an error
-            error(Exception): The error that occurred
+            _ws (WebSocketApp): The WebSocket instance that encountered an error.
+            error (Exception): The error that occurred.
         """
         self.logger.error(f"WebSocket error: {error}")
 
     def _ws_error_response(self, message_id, data):
-        """
-        Send an error response back to the server via the WebSocket connection.
+        """Send standardized error response via WebSocket.
 
-        This method constructs and sends a standardized error response message.
+        Constructs and sends an error response message back to the server
+        for the specified message ID.
 
         Args:
-            message_id(str): The ID of the message being responded to
-            data(str): The error message or details to include in the response
-
-        Returns:
-            None
-
-        Raises:
-            Exception: If sending the error response fails
+            message_id (str): ID of the message being responded to.
+            data (str): Error message or details to include in the response.
         """
 
         if self._ws and self._ws_connected:  # Check connection state

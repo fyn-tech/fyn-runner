@@ -11,75 +11,72 @@
 # You should have received a copy of the GNU General Public License along with this program. If not,
 #  see <https://www.gnu.org/licenses/>.
 
-# pylint: disable=protected-access,pointless-statement,unspecified-encoding
+# pylint: disable=protected-access,pointless-statement,unspecified-encoding,import-error
 
 import atexit
 import json
 import threading
 import time
-from concurrent.futures import Future
-from pathlib import Path
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock, patch, ANY
 
 import pytest
 import requests
 
-from fyn_runner.server.message import HttpMethod, Message
-from fyn_runner.server.message_queue import MessageQueue
 from fyn_runner.server.server_proxy import ServerProxy
+import fyn_api_client as fac
 
 
 class TestServerProxy:
-    """Test suite for ServerProxy utility."""
+    """Test suite for ServerProxy factory and WebSocket manager."""
 
     @pytest.fixture
-    def server_proxy(self):
+    def mock_logger(self):
+        """Create a mock logger."""
+        return MagicMock()
+
+    @pytest.fixture
+    def mock_file_manager(self):
+        """Create a mock file manager."""
+        return MagicMock()
+
+    @pytest.fixture
+    def mock_configuration(self):
+        """Create a mock configuration."""
+        config = MagicMock()
+        config.name = "test_runner"
+        config.id = "test-123"
+        config.token = "test-token"
+        config.report_interval = 60
+        return config
+
+    @pytest.fixture
+    def server_proxy(self, mock_logger, mock_file_manager, mock_configuration):
         """Create a ServerProxy instance for testing."""
-        # Create mocks for the dependencies
-        logger_mock = MagicMock()
-        file_manager_mock = MagicMock()
-
-        # Create a configuration mock with required attributes
-        config_mock = MagicMock()
-        config_mock.name = "test_runner"
-        config_mock.id = "test-123"
-        config_mock.token = "test-token"
-        config_mock.api_url = "https://api.example.com"
-        config_mock.api_port = 8000
-        config_mock.report_interval = 60
-
-        # Save original register function and threading class
         original_register = atexit.register
         original_thread = threading.Thread
 
-        # Create thread mocks that track when daemon is set
-        thread_instances = []
+        # Mock atexit.register to avoid cleanup registration
+        atexit.register = MagicMock()
 
-        def create_thread_mock(**_kwargs):
-            mock_thread = MagicMock()
-            thread_instances.append(mock_thread)
-            return mock_thread
+        # Mock threading.Thread to avoid starting actual threads
+        mock_thread = MagicMock()
+        threading.Thread = MagicMock(return_value=mock_thread)
 
-        thread_mock = MagicMock(side_effect=create_thread_mock)
-        register_mock = MagicMock()
-        fetch_api_mock = MagicMock()
-        raise_connection_mock = MagicMock()
+        # Mock API configuration and client creation
+        with (patch('fyn_api_client.Configuration') as mock_config,
+              patch('fyn_api_client.ApiClient') as mock_api_client,
+              patch('fyn_api_client.RunnerManagerApi') as mock_runner_api,
+              patch.object(ServerProxy, '_report_status') as mock_report_status):
 
-        # Temporarily replace atexit.register and threading.Thread
-        atexit.register = register_mock
-        threading.Thread = thread_mock
+            mock_config.return_value.host = "http://localhost:8000"
 
-        # Create the ServerProxy with patched methods
-        with patch.object(ServerProxy, '_fetch_api', fetch_api_mock), \
-                patch.object(ServerProxy, '_raise_connection', raise_connection_mock):
-            proxy = ServerProxy(logger_mock, file_manager_mock, config_mock)
+            proxy = ServerProxy(mock_logger, mock_file_manager, mock_configuration)
 
-        # Store mocks for later assertions
-        proxy._thread_mock = thread_mock
-        proxy._thread_instances = thread_instances  # Store the thread instances
-        proxy._fetch_api_mock = fetch_api_mock
-        proxy._raise_connection_mock = raise_connection_mock
-        proxy._atexit_register_mock = register_mock
+            # Store mocks for later assertions
+            proxy._mock_thread = mock_thread
+            proxy._mock_report_status = mock_report_status
+            proxy._mock_api_client = mock_api_client
+            proxy._mock_runner_api = mock_runner_api
 
         # Restore original functions
         atexit.register = original_register
@@ -87,759 +84,579 @@ class TestServerProxy:
 
         return proxy
 
-    def test_initialization(self, server_proxy):
-        """Test the initialization of ServerProxy."""
-        # Check that essential attributes are initialized
-        assert server_proxy.running is True
-        assert isinstance(server_proxy._queue, MessageQueue)
-        assert isinstance(server_proxy._new_send_message, threading.Event)
+    def test_initialization(self, server_proxy, mock_logger, mock_file_manager, mock_configuration):
+        """Test ServerProxy initialization."""
+        # Check basic attributes
+        assert server_proxy.logger == mock_logger
+        assert server_proxy.file_manager == mock_file_manager
+        assert server_proxy.name == mock_configuration.name
+        assert server_proxy.id == str(mock_configuration.id)
+        assert server_proxy.token == str(mock_configuration.token)
+        assert server_proxy.report_interval == mock_configuration.report_interval
 
-        # Check that thread is created (mocked) - using our stored mock
-        thread_mock = server_proxy._thread_mock
-        assert thread_mock.call_count >= 2
-
-        # Check thread targets set
-        thread_calls = thread_mock.call_args_list
-        thread_targets = [call[1]["target"] for call in thread_calls if "target" in call[1]]
-        assert server_proxy._send_handler in thread_targets
-        assert server_proxy._receive_handler in thread_targets
-
-        # Check that the daemon property was set on at least one thread instance
-        daemon_values = [getattr(instance, 'daemon', None)
-                         for instance in server_proxy._thread_instances]
-        assert True in daemon_values, "No thread had daemon=True set"
-
+        # Check proxy state
         assert server_proxy.running is True
         assert server_proxy._ws is None
         assert server_proxy._ws_connected is False
 
-        assert server_proxy._fetch_api_mock.call_count > 0
-        assert server_proxy._raise_connection_mock.call_count > 0
-        assert server_proxy._atexit_register_mock.call_count > 0
+        # Check observer management
+        assert isinstance(server_proxy._observers, dict)
+        assert len(server_proxy._observers) == 0
+        assert isinstance(server_proxy._observers_lock, type(threading.RLock()))
 
-    def test_push_message(self, server_proxy):
-        """Test adding a message to the queue."""
-        # Create a mock message
-        mock_message = MagicMock()
+        # Check that background thread was started
+        server_proxy._mock_thread.start.assert_called_once()
 
-        # Mock the queue's push_message method and the event
-        server_proxy._queue.push_message = MagicMock()
-        server_proxy._new_send_message.set = MagicMock()
+        # Check that status was reported
+        server_proxy._mock_report_status.assert_called_once_with(fac.StateEnum.ID)
 
-        # Call push_message
-        server_proxy.push_message(mock_message)
+        # Check API client and runner API setup
+        assert server_proxy._api_client is not None
+        assert server_proxy._runner_api is not None
 
-        # Verify that the message was added to the queue
-        server_proxy._queue.push_message.assert_called_once_with(mock_message)
+        # Check that the report_interval warning was logged
+        mock_logger.warning.assert_called_with("report_interval not used, wip.")
 
-        # Verify that the event was set
-        server_proxy._new_send_message.set.assert_called_once()
+    def test_create_application_registry_api(self, server_proxy):
+        """Test creating ApplicationRegistryApi client."""
+        with patch('fyn_api_client.ApplicationRegistryApi') as mock_app_api:
+            mock_instance = MagicMock()
+            mock_app_api.return_value = mock_instance
 
-    def test_push_message_exception(self, server_proxy):
-        """Test handling exceptions when adding a message to the queue."""
-        # Create a mock message
-        mock_message = MagicMock()
+            result = server_proxy.create_application_registry_api()
 
-        # Make queue.push_message raise an exception
-        error_msg = "Test error"
-        server_proxy._queue.push_message = MagicMock(side_effect=Exception(error_msg))
+            assert result == mock_instance
+            mock_app_api.assert_called_once_with(server_proxy._api_client)
 
-        # Call push_message and expect exception to be raised
-        with pytest.raises(Exception):
-            server_proxy.push_message(mock_message)
+    def test_create_application_registry_api_failure(self, server_proxy):
+        """Test ApplicationRegistryApi creation failure."""
+        with patch('fyn_api_client.ApplicationRegistryApi', side_effect=Exception("API error")):
+            with pytest.raises(Exception,
+                               match="Error while configuring the client api: API error"):
+                server_proxy.create_application_registry_api()
 
-        # Verify error was logged
-        server_proxy.logger.error.assert_called_once()
-        assert error_msg in server_proxy.logger.error.call_args[0][0]
+            server_proxy.logger.error.assert_called_once()
 
-    def test_push_message_with_response(self, server_proxy):
-        """Test adding a message to the queue with response future."""
-        # Create a mock message
-        mock_message = MagicMock()
-        mock_message.msg_id = "test-message-id"
+    def test_create_job_manager_api(self, server_proxy):
+        """Test creating JobManagerApi client."""
+        with patch('fyn_api_client.JobManagerApi') as mock_job_api:
+            mock_instance = MagicMock()
+            mock_job_api.return_value = mock_instance
 
-        # Mock the queue's push_message method and the event
-        server_proxy._queue.push_message = MagicMock()
-        server_proxy._new_send_message.set = MagicMock()
+            result = server_proxy.create_job_manager_api()
 
-        # Call push_message_with_response
-        future = server_proxy.push_message_with_response(mock_message)
+            assert result == mock_instance
+            mock_job_api.assert_called_once_with(server_proxy._api_client)
 
-        # Verify that the message was added to the queue
-        server_proxy._queue.push_message.assert_called_once_with(mock_message)
+    def test_create_job_manager_api_failure(self, server_proxy):
+        """Test JobManagerApi creation failure."""
+        with patch('fyn_api_client.JobManagerApi', side_effect=Exception("API error")):
+            with pytest.raises(Exception,
+                               match="Error while configuring the client api: API error"):
+                server_proxy.create_job_manager_api()
 
-        # Verify that the event was set
-        server_proxy._new_send_message.set.assert_called_once()
+            server_proxy.logger.error.assert_called_once()
 
-        # Verify that a future was created and stored
-        assert mock_message.msg_id in server_proxy._response_futures
-        assert server_proxy._response_futures[mock_message.msg_id] == future
-        assert not future.done()
+    def test_create_runner_manager_api(self, server_proxy):
+        """Test creating RunnerManagerApi client."""
+        with patch('fyn_api_client.RunnerManagerApi') as mock_runner_api:
+            mock_instance = MagicMock()
+            mock_runner_api.return_value = mock_instance
 
-    def test_push_message_with_response_exception(self, server_proxy):
-        """Test handling exceptions when adding a message with response to the queue."""
-        # Create a mock message
-        mock_message = MagicMock()
-        mock_message.msg_id = "test-message-id"
+            result = server_proxy.create_runner_manager_api()
 
-        # Make queue.push_message raise an exception
-        error_msg = "Test error"
-        server_proxy._queue.push_message = MagicMock(side_effect=Exception(error_msg))
+            assert result == mock_instance
+            mock_runner_api.assert_called_once_with(server_proxy._api_client)
 
-        # Call push_message_with_response and expect exception
-        with pytest.raises(Exception):
-            server_proxy.push_message_with_response(mock_message)
+    def test_create_runner_manager_api_failure(self, server_proxy):
+        """Test RunnerManagerApi creation failure."""
+        with patch('fyn_api_client.RunnerManagerApi', side_effect=Exception("API error")):
+            with pytest.raises(Exception,
+                               match="Error while configuring the client api: API error"):
+                server_proxy.create_runner_manager_api()
 
-        # Verify error was logged
-        server_proxy.logger.error.assert_called_once()
-        assert error_msg in server_proxy.logger.error.call_args[0][0]
-
-        # Verify the future was removed from _response_futures
-        assert mock_message.msg_id not in server_proxy._response_futures
+            server_proxy.logger.error.assert_called_once()
 
     def test_register_observer(self, server_proxy):
         """Test registering an observer."""
-        # Create a mock callback
         mock_callback = MagicMock()
 
-        # Register the observer
         server_proxy.register_observer("test_message", mock_callback)
 
-        # Verify it was registered
         assert "test_message" in server_proxy._observers
         assert server_proxy._observers["test_message"] == mock_callback
-
-        # Verify logging occurred
         server_proxy.logger.info.assert_called_with("Registered observer test_message")
 
     def test_register_duplicate_observer(self, server_proxy):
-        """Test that registering a duplicate observer raises an exception."""
-        # Register an initial observer
+        """Test registering a duplicate observer raises an exception."""
         server_proxy.register_observer("test_message", MagicMock())
 
-        # Attempt to register a duplicate
         with pytest.raises(RuntimeError, match="Trying to add to existing observer test_message"):
             server_proxy.register_observer("test_message", MagicMock())
 
     def test_deregister_observer(self, server_proxy):
         """Test deregistering an observer."""
-        # First register an observer
         mock_callback = MagicMock()
         server_proxy.register_observer("test_message", mock_callback)
 
-        # Then deregister it
         server_proxy.deregister_observer("test_message")
 
-        # Verify it was removed
         assert "test_message" not in server_proxy._observers
-
-        # Verify logging occurred
         server_proxy.logger.info.assert_called_with("Deregistered observer test_message")
 
     def test_deregister_nonexistent_observer(self, server_proxy):
-        """Test that deregistering a non-existent observer raises an exception."""
+        """Test deregistering a non-existent observer raises an exception."""
         with pytest.raises(RuntimeError,
                            match="Trying to remove non-existant observer test_message"):
             server_proxy.deregister_observer("test_message")
 
+    def test_configure_client_api(self, server_proxy):
+        """Test API client configuration."""
+        with patch('fyn_api_client.ApiClient') as mock_api_client:
+            mock_instance = MagicMock()
+            mock_api_client.return_value = mock_instance
+
+            result = server_proxy._configure_client_api()
+
+            assert result == mock_instance
+            mock_api_client.assert_called_once_with(server_proxy.api_config)
+            mock_instance.set_default_header.assert_called_once_with(
+                "Authorization", f"Token {server_proxy.token}"
+            )
+
+    def test_configure_client_api_failure(self, server_proxy):
+        """Test API client configuration failure."""
+        with patch('fyn_api_client.ApiClient', side_effect=Exception("Config error")):
+            with pytest.raises(Exception,
+                               match="Error while configuring the client api: Config error"):
+                server_proxy._configure_client_api()
+
+            server_proxy.logger.error.assert_called_once()
+
     def test_report_status_success(self, server_proxy):
-        """Test _report_status when the request is successful."""
-        # Mock the _send_message method to return a successful response
-        expected_result = {"status": "success"}
+        """Test successful status reporting."""
+        server_proxy._runner_api = MagicMock()
 
-        with patch.object(server_proxy, '_send_message', return_value=expected_result) as mock_send:
-            # Call the method
-            server_proxy._report_status('idle')
+        server_proxy._report_status(fac.StateEnum.ID)
 
-            # Verify message was created and sent correctly
-            mock_send.assert_called_once()
-            message_arg = mock_send.call_args[0][0]
-            assert message_arg.method == HttpMethod.PATCH
-            assert message_arg.json_data == {"state": "idle"}
-            assert "https://api.example.com:8000/runner_manager/report_status/" in str(
-                message_arg.api_path)
-
-    def test_report_status_connection_error(self, server_proxy):
-        """Test _report_status when a connection error occurs."""
-        # Mock _send_message to raise a ConnectionError
-        error_msg = "Failed to connect"
-        exception = requests.exceptions.ConnectionError(error_msg)
-
-        with patch.object(server_proxy, '_send_message', side_effect=exception):
-            # Call the method and check that it raises a ConnectionError
-            with pytest.raises(ConnectionError) as exc_info:
-                server_proxy._report_status('idle')
-
-            # Verify the exception message
-            assert "Failed to report status 'idle'" in str(exc_info.value)
-
-            # Verify logging
-            server_proxy.logger.error.assert_called_once()
-
-    def test_send_message_json(self, server_proxy):
-        """Test sending a JSON message."""
-        # Create a mock message with JSON data
-        message = Message.json_message(
-            api_path="https://api.example.com/test",
-            method=HttpMethod.POST,
-            json_data={"key": "value"}
+        server_proxy.logger.debug.assert_called_once()
+        server_proxy._runner_api.runner_manager_runner_partial_update.assert_called_once_with(
+            id=server_proxy.id,
+            patched_runner_info_request=ANY
         )
 
-        # Mock the requests library
-        mock_response = MagicMock()
-        mock_response.json.return_value = {"result": "success"}
+    def test_report_status_failure(self, server_proxy):
+        """Test status reporting failure."""
+        server_proxy._runner_api = MagicMock()
+        server_proxy._runner_api.runner_manager_runner_partial_update.side_effect = \
+            requests.exceptions.RequestException("Connection failed")
 
-        with patch('requests.post', return_value=mock_response) as mock_post:
-            # Call the method
-            result = server_proxy._send_message(message)
+        with pytest.raises(ConnectionError, match="Failed to report status"):
+            server_proxy._report_status(fac.StateEnum.ID)
 
-            # Verify the request was made correctly
-            mock_post.assert_called_once()
-            kwargs = mock_post.call_args[1]
-            assert kwargs['json'] == {"key": "value"}
-            assert 'id' in kwargs['headers']
-            assert 'token' in kwargs['headers']
+        server_proxy.logger.error.assert_called_once()
 
-            # Verify the result
-            assert result == {"result": "success"}
+    def test_websocket_url_construction(self, server_proxy):
+        """Test WebSocket URL construction logic."""
+        # Test HTTPS to WSS conversion
+        server_proxy.api_config.host = "https://api.example.com:8443"
 
-    def test_send_message_file(self, server_proxy, tmp_path):
-        """Test sending a file message."""
-        # Create a temporary file
-        file_path = tmp_path / "test_file.txt"
-        with open(file_path, 'w') as f:
-            f.write("Test content")
+        # Extract URL construction logic from _receive_handler
+        protocol, url, port = server_proxy.api_config.host.split(":")
+        protocol = "ws:" if protocol == "http" else "wss:"
+        ws_url = f"{protocol}{url}:{port}/ws/runner_manager/{server_proxy.id}"
 
-        # Create a mock message with file path
-        message = Message.file_message(
-            api_path="https://api.example.com/upload",
-            method=HttpMethod.POST,
-            file_path=file_path
-        )
+        expected_url = f"wss://api.example.com:8443/ws/runner_manager/{server_proxy.id}"
+        assert ws_url == expected_url
 
-        # Mock the requests library
-        mock_response = MagicMock()
-        mock_response.json.return_value = {"result": "uploaded"}
+        # Test HTTP to WS conversion
+        server_proxy.api_config.host = "http://localhost:8000"
+        protocol, url, port = server_proxy.api_config.host.split(":")
+        protocol = "ws:" if protocol == "http" else "wss:"
+        ws_url = f"{protocol}{url}:{port}/ws/runner_manager/{server_proxy.id}"
 
-        with patch('requests.post', return_value=mock_response) as mock_post:
-            # Call the method
-            result = server_proxy._send_message(message)
-
-            # Verify the request was made correctly
-            mock_post.assert_called_once()
-            kwargs = mock_post.call_args[1]
-            assert 'files' in kwargs
-            assert kwargs['files']['file']
-
-            # Verify the result
-            assert result == {"result": "uploaded"}
-
-    def test_send_message_file_not_found(self, server_proxy):
-        """Test sending a file message with a non-existent file."""
-        # Create a mock message with non-existent file path
-        message = Message.file_message(
-            api_path="https://api.example.com/upload",
-            method=HttpMethod.POST,
-            file_path=Path("/non/existent/file.txt")
-        )
-
-        # Call the method and check that it raises FileNotFoundError
-        with pytest.raises(FileNotFoundError):
-            server_proxy._send_message(message)
-
-    def test_send_message_unsupported_method(self, server_proxy):
-        """Test sending a message with an unsupported HTTP method."""
-        # Create a mock message with an unsupported method (simulated)
-        message = MagicMock()
-        message.method = MagicMock()
-        message.method.name = "UNSUPPORTED"
-        message.api_path = "https://api.example.com/test"
-        message.file_path = None
-        message.json_data = {}
-        message.header = {}
-        message.params = None
-
-        # Call the method and check that it raises ValueError
-        with pytest.raises(ValueError, match="Unsupported HTTP method"):
-            server_proxy._send_message(message)
-
-    def test_send_handler_message_processing(self, server_proxy):
-        """Test the _send_handler method processes messages correctly."""
-        # Instead of running the actual _send_handler method, we'll test its logic
-        # separately since it contains an infinite loop
-
-        # Extract the method implementation and create a modified version that runs once
-        def modified_send_handler():
-            # Mock the wait method to return True (message added)
-            server_proxy._new_send_message.wait = MagicMock(return_value=True)
-
-            # Mock queue.is_empty to return False once then True
-            server_proxy._queue.is_empty = MagicMock(side_effect=[False, True])
-
-            # Mock the message
-            mock_message = MagicMock()
-            server_proxy._queue.get_next_message = MagicMock(return_value=mock_message)
-
-            # Mock _send_message
-            server_proxy._send_message = MagicMock()
-
-            # Execute the core logic from _send_handler just once
-            server_proxy._new_send_message.clear()
-            while not server_proxy._queue.is_empty():
-                message = server_proxy._queue.get_next_message()
-                server_proxy._send_message(message)
-
-            # Verify message was processed
-            server_proxy._send_message.assert_called_once_with(mock_message)
-
-        # Run our modified handler that doesn't have an infinite loop
-        modified_send_handler()
-
-    def test_send_handler_periodic_status(self, server_proxy):
-        """Test the _send_handler method sends periodic status updates."""
-        # Extract and test just the status reporting logic
-        def test_status_reporting():
-            # Mock dependencies
-            server_proxy._queue.is_empty = MagicMock(return_value=True)
-            server_proxy._new_send_message.wait = MagicMock(return_value=False)  # Simulate timeout
-            server_proxy._report_status = MagicMock()
-
-            # Execute the status reporting logic
-            current_time = time.time()
-            next_report_time = current_time - 1  # Make it due immediately
-
-            if current_time >= next_report_time:
-                server_proxy._report_status('idle')
-
-            # Verify status was reported
-            server_proxy._report_status.assert_called_once_with('idle')
-
-        # Run the test
-        test_status_reporting()
-
-    def test_send_handler_error_handling(self, server_proxy):
-        """Test that _send_handler properly handles errors in message sending."""
-        # Extract and test just the error handling logic
-        def test_error_handling():
-            # Mock queue to return one message then say it's empty
-            server_proxy._queue.is_empty = MagicMock(side_effect=[False, True])
-
-            # Create a mock message
-            mock_message = MagicMock()
-            server_proxy._queue.get_next_message = MagicMock(return_value=mock_message)
-
-            # Make _send_message raise an exception
-            error_msg = "Test error"
-            server_proxy._send_message = MagicMock(side_effect=Exception(error_msg))
-
-            # Execute the error handling logic
-            server_proxy._new_send_message.clear()
-            while not server_proxy._queue.is_empty():
-                message = server_proxy._queue.get_next_message()
-                try:
-                    server_proxy._send_message(message)
-                except Exception as e:
-                    server_proxy.logger.error(f"Error sending message: {e}")
-
-            # Verify error was logged
-            server_proxy.logger.error.assert_called_once()
-            assert error_msg in server_proxy.logger.error.call_args[0][0]
-
-        # Run the test
-        test_error_handling()
-
-    def test_handle_response_future(self, server_proxy):
-        """Test handling response futures."""
-        # Create a mock message and response
-        mock_message = MagicMock()
-        mock_message.msg_id = "test-message-id"
-
-        mock_response = MagicMock()
-        mock_response.json.return_value = {"result": "success"}
-
-        # Create a future and store it
-        future = Future()
-        with server_proxy._response_futures_lock:
-            server_proxy._response_futures[mock_message.msg_id] = future
-
-        # Call _handle_response_future
-        server_proxy._handle_response_future(mock_message, mock_response)
-
-        # Verify future has been completed with the response
-        assert future.done()
-        assert future.result() == {"result": "success"}
-
-        # Verify the future was removed from _response_futures
-        assert mock_message.msg_id not in server_proxy._response_futures
-
-    def test_handle_response_future_exception(self, server_proxy):
-        """Test handling response futures when an exception occurs."""
-        # Create a mock message and response that raises exception
-        mock_message = MagicMock()
-        mock_message.msg_id = "test-message-id"
-
-        mock_response = MagicMock()
-        error_msg = "JSON decode error"
-        mock_response.json.side_effect = ValueError(error_msg)
-
-        # Create a future and store it
-        future = Future()
-        with server_proxy._response_futures_lock:
-            server_proxy._response_futures[mock_message.msg_id] = future
-
-        # Call _handle_response_future
-        server_proxy._handle_response_future(mock_message, mock_response)
-
-        # Verify future has been completed with exception
-        assert future.done()
-        with pytest.raises(ValueError) as exc_info:
-            future.result()
-        assert error_msg in str(exc_info.value)
-
-        # Verify the future was removed from _response_futures
-        assert mock_message.msg_id not in server_proxy._response_futures
-
-    def test_send_message_with_future(self, server_proxy):
-        """Test sending a message and handling its future."""
-        # Create a mock message
-        message = Message.json_message(
-            api_path="https://api.example.com/test",
-            method=HttpMethod.POST,
-            json_data={"key": "value"}
-        )
-
-        # Create a future for this message
-        future = Future()
-        with server_proxy._response_futures_lock:
-            server_proxy._response_futures[message.msg_id] = future
-
-        # Mock the requests library
-        mock_response = MagicMock()
-        mock_response.json.return_value = {"result": "success"}
-
-        with patch('requests.post', return_value=mock_response) as mock_post:
-            # Call the method
-            result = server_proxy._send_message(message)
-
-            # Verify the request was made correctly
-            mock_post.assert_called_once()
-
-            # Verify the result
-            assert result == {"result": "success"}
-
-            # Verify the future was completed
-            assert future.done()
-            assert future.result() == {"result": "success"}
-
-    def test_raise_connection_success(self, server_proxy):
-        """Test _raise_connection when the connection is successful."""
-        # Mock _report_status to succeed
-        with patch.object(server_proxy, '_report_status') as mock_report_status:
-            # Call the method
-            server_proxy._raise_connection()
-
-            # Verify _report_status was called with 'idle'
-            mock_report_status.assert_called_once_with('idle')
-
-            # Verify logging
-            server_proxy.logger.info.assert_called_once()
-
-    def test_raise_connection_error(self, server_proxy):
-        """Test _raise_connection when a connection error occurs."""
-        # Mock _report_status to raise a ConnectionError
-        error_msg = "Failed to connect"
-        with patch.object(server_proxy, '_report_status', side_effect=ConnectionError(error_msg)):
-            # Call the method and check that it raises a ConnectionError
-            with pytest.raises(ConnectionError) as exc_info:
-                server_proxy._raise_connection()
-
-            # Verify the exception message
-            assert error_msg in str(exc_info.value)
-
-            # Verify logging
-            server_proxy.logger.info.assert_called_once()
+        expected_url = f"ws://localhost:8000/ws/runner_manager/{server_proxy.id}"
+        assert ws_url == expected_url
 
     def test_handle_ws_message_valid(self, server_proxy):
         """Test handling a valid WebSocket message."""
-        # Set up the WebSocket connection state
         server_proxy._ws = MagicMock()
         server_proxy._ws_connected = True
 
-        # Create a mock message
         message_data = json.dumps({
             "id": "msg-123",
             "type": "test_message",
             "data": {"key": "value"}
         })
 
-        # Create a mock observer callback that returns a response
         mock_callback = MagicMock(return_value={"status": "processed"})
+        server_proxy._observers["test_message"] = mock_callback
 
-        # Add the observer to the observers dictionary
-        server_proxy._observers = {}  # Reset observers
-        with server_proxy._observers_lock:
-            server_proxy._observers["test_message"] = mock_callback
-
-        # Call the method
         server_proxy._handle_ws_message(server_proxy._ws, message_data)
 
-        # Verify callback was called with the message
         mock_callback.assert_called_once()
         call_arg = mock_callback.call_args[0][0]
         assert call_arg['id'] == "msg-123"
         assert call_arg['type'] == "test_message"
 
-        # Verify response was sent
         server_proxy._ws.send.assert_called_once()
         sent_response = json.loads(server_proxy._ws.send.call_args[0][0])
         assert sent_response["response_to"] == "msg-123"
         assert sent_response["status"] == "processed"
 
-    def test_handle_ws_message_no_id(self, server_proxy):
-        """Test handling a WebSocket message without an ID."""
-        # Set up the WebSocket connection state
+    @pytest.mark.parametrize("message_data,expected_error", [
+        # Message without ID
+        ({"type": "test_message", "data": {"key": "value"}}, "no id"),
+        # Message without type
+        ({"id": "msg-123", "data": {"key": "value"}}, "without type"),
+        # Message with unknown type
+        ({"id": "msg-123", "type": "unknown_type", "data": {"key": "value"}},
+         "unknown message type"),
+    ])
+    def test_handle_ws_message_errors(self, server_proxy, message_data, expected_error):
+        """Test handling WebSocket messages with various error conditions."""
         server_proxy._ws = MagicMock()
         server_proxy._ws_connected = True
+        server_proxy._observers = {}  # No observers registered
 
-        # Create a message without an ID
-        message_data = json.dumps({
-            "type": "test_message",
-            "data": {"key": "value"}
-        })
-
-        # Call the method
-        server_proxy._handle_ws_message(server_proxy._ws, message_data)
+        message_json = json.dumps(message_data)
+        server_proxy._handle_ws_message(server_proxy._ws, message_json)
 
         # Verify error was logged
         server_proxy.logger.error.assert_called_once()
-        assert "no id" in server_proxy.logger.error.call_args[0][0].lower()
+        assert expected_error in server_proxy.logger.error.call_args[0][0].lower()
 
-        # Verify no response was sent
-        server_proxy._ws.send.assert_not_called()
+        # Check response behavior based on message type
+        if "id" in message_data:
+            server_proxy._ws.send.assert_called_once()
+            sent_response = json.loads(server_proxy._ws.send.call_args[0][0])
+            assert sent_response["type"] == "error"
+            assert sent_response["response_to"] == message_data["id"]
+        else:
+            server_proxy._ws.send.assert_not_called()
 
-    def test_handle_ws_message_no_type(self, server_proxy):
-        """Test handling a WebSocket message without a type."""
-        # Set up the WebSocket connection state
+    @pytest.mark.parametrize("callback_return,callback_exception,expected_response_type", [
+        # Callback returns None -> success response
+        (None, None, "success"),
+        # Callback raises exception -> error response
+        (None, Exception("Test callback error"), "error"),
+    ])
+    def test_handle_ws_message_callback_scenarios(
+            self,
+            server_proxy,
+            callback_return,
+            callback_exception,
+            expected_response_type):
+        """Test WebSocket message handling with different callback scenarios."""
         server_proxy._ws = MagicMock()
         server_proxy._ws_connected = True
 
-        # Create a message without a type
-        message_data = json.dumps({
-            "id": "msg-123",
-            "data": {"key": "value"}
-        })
-
-        # Call the method
-        server_proxy._handle_ws_message(server_proxy._ws, message_data)
-
-        # Verify error was logged
-        server_proxy.logger.error.assert_called_once()
-        assert "without type" in server_proxy.logger.error.call_args[0][0].lower()
-
-        # Verify error response was sent
-        server_proxy._ws.send.assert_called_once()
-        sent_response = json.loads(server_proxy._ws.send.call_args[0][0])
-        assert sent_response["type"] == "error"
-        assert sent_response["response_to"] == "msg-123"
-        assert "type" in sent_response["data"].lower()
-
-    def test_handle_ws_message_unknown_type(self, server_proxy):
-        """Test handling a WebSocket message with an unknown type."""
-        # Set up the WebSocket connection state
-        server_proxy._ws = MagicMock()
-        server_proxy._ws_connected = True
-
-        # Create a message with an unknown type
-        message_data = json.dumps({
-            "id": "msg-123",
-            "type": "unknown_type",
-            "data": {"key": "value"}
-        })
-
-        # Ensure no observers are registered
-        server_proxy._observers = {}
-        server_proxy._handle_ws_message(server_proxy._ws, message_data)
-
-        # Verify error was logged
-        server_proxy.logger.error.assert_called_once()
-        assert "unknown message type" in server_proxy.logger.error.call_args[0][0].lower()
-
-        # Verify error response was sent
-        server_proxy._ws.send.assert_called_once()
-        sent_response = json.loads(server_proxy._ws.send.call_args[0][0])
-        assert sent_response["type"] == "error"
-        assert sent_response["response_to"] == "msg-123"
-        assert "unknown" in sent_response["data"].lower()
-
-    def test_handle_ws_message_callback_exception(self, server_proxy):
-        """Test handling a WebSocket message when the callback raises an exception."""
-        # Set up the WebSocket connection state
-        server_proxy._ws = MagicMock()
-        server_proxy._ws_connected = True
-
-        # Create a mock message
         message_data = json.dumps({
             "id": "msg-123",
             "type": "test_message",
             "data": {"key": "value"}
         })
 
-        # Create a mock observer callback that raises an exception
-        error_msg = "Test callback error"
-        mock_callback = MagicMock(side_effect=Exception(error_msg))
+        # Set up callback
+        if callback_exception:
+            mock_callback = MagicMock(side_effect=callback_exception)
+        else:
+            mock_callback = MagicMock(return_value=callback_return)
 
-        # Add the observer to the observers dictionary
-        server_proxy._observers = {}  # Reset observers
-        with server_proxy._observers_lock:
-            server_proxy._observers["test_message"] = mock_callback
+        server_proxy._observers["test_message"] = mock_callback
 
-        # Call the method
         server_proxy._handle_ws_message(server_proxy._ws, message_data)
 
         # Verify callback was called
         mock_callback.assert_called_once()
 
-        # Verify error was logged
-        server_proxy.logger.error.assert_called_once()
-        assert error_msg in server_proxy.logger.error.call_args[0][0]
-
-        # Verify error response was sent
+        # Verify response
         server_proxy._ws.send.assert_called_once()
         sent_response = json.loads(server_proxy._ws.send.call_args[0][0])
-        assert sent_response["type"] == "error"
-        assert sent_response["response_to"] == "msg-123"
-        assert error_msg in sent_response["data"]
-
-    def test_handle_ws_message_callback_no_response(self, server_proxy):
-        """Test handling a WebSocket message when the callback returns None."""
-        # Set up the WebSocket connection state
-        server_proxy._ws = MagicMock()
-        server_proxy._ws_connected = True
-
-        # Create a mock message
-        message_data = json.dumps({
-            "id": "msg-123",
-            "type": "test_message",
-            "data": {"key": "value"}
-        })
-
-        # Create a mock observer callback that returns None
-        mock_callback = MagicMock(return_value=None)
-
-        # Add the observer to the observers dictionary
-        server_proxy._observers = {}  # Reset observers
-        with server_proxy._observers_lock:
-            server_proxy._observers["test_message"] = mock_callback
-
-        # Call the method
-        server_proxy._handle_ws_message(server_proxy._ws, message_data)
-
-        # Verify callback was called
-        mock_callback.assert_called_once()
-
-        # Verify a default success response was sent
-        server_proxy._ws.send.assert_called_once()
-        sent_response = json.loads(server_proxy._ws.send.call_args[0][0])
-        assert sent_response["type"] == "success"
+        assert sent_response["type"] == expected_response_type
         assert sent_response["response_to"] == "msg-123"
 
-    def test_on_ws_open(self, server_proxy):
-        """Test the WebSocket open callback."""
-        # Reset the connection state
+        # Verify error logging for exceptions
+        if callback_exception:
+            server_proxy.logger.error.assert_called_once()
+            assert str(callback_exception) in server_proxy.logger.error.call_args[0][0]
+
+    def test_websocket_connection_callbacks(self, server_proxy):
+        """Test WebSocket connection state callbacks."""
+        # Test open callback
         server_proxy._ws_connected = False
-
-        # Call the method
         server_proxy._on_ws_open(MagicMock())
-
-        # Verify connection status was updated
         assert server_proxy._ws_connected is True
-
-        # Verify event was logged
         server_proxy.logger.info.assert_called_with("WebSocket connection established")
 
-    def test_on_ws_close(self, server_proxy):
-        """Test the WebSocket close callback."""
-        # Set initial state to connected
-        server_proxy._ws_connected = True
-
-        # Call the method
+        # Test close callback
         server_proxy._on_ws_close(MagicMock(), 1000, "Normal closure")
-
-        # Verify connection status was updated
         assert server_proxy._ws_connected is False
-
-        # Verify event was logged with status code and message
         server_proxy.logger.info.assert_called_with(
-            "WebSocket connection closed: 1000 Normal closure"
-        )
+            "WebSocket connection closed: 1000 Normal closure")
 
-    def test_on_ws_error(self, server_proxy):
-        """Test the WebSocket error callback."""
-        # Create a mock error
+        # Test error callback
         error = Exception("Test WebSocket error")
-
-        # Reset the logger mock
-        server_proxy.logger.reset_mock()
-
-        # Call the method
         server_proxy._on_ws_error(MagicMock(), error)
-
-        # Verify error was logged
         server_proxy.logger.error.assert_called_with("WebSocket error: Test WebSocket error")
 
-    def test_ws_error_response_connected(self, server_proxy):
-        """Test sending a WebSocket error response when connected."""
-        # Set up the WebSocket connection state
+    @pytest.mark.parametrize("connected,send_exception,should_send", [
+        (True, None, True),  # Connected, no exception
+        (False, None, False),  # Disconnected
+        (True, Exception("Send failed"), True),  # Connected but send fails
+    ])
+    def test_ws_error_response(self, server_proxy, connected, send_exception, should_send):
+        """Test WebSocket error response under different conditions."""
         server_proxy._ws = MagicMock()
-        server_proxy._ws_connected = True
+        server_proxy._ws_connected = connected
 
-        # Call the method
+        if send_exception:
+            server_proxy._ws.send.side_effect = send_exception
+
         server_proxy._ws_error_response("msg-123", "Test error message")
 
-        # Verify the error response was sent
-        server_proxy._ws.send.assert_called_once()
-        sent_response = json.loads(server_proxy._ws.send.call_args[0][0])
-        assert sent_response["type"] == "error"
-        assert sent_response["response_to"] == "msg-123"
-        assert sent_response["data"] == "Test error message"
+        if should_send:
+            server_proxy._ws.send.assert_called_once()
+            if send_exception:
+                # Should log error about failed send
+                server_proxy.logger.error.assert_called_once()
+                log_message = server_proxy.logger.error.call_args[0][0]
+                assert "Failed to send error response" in log_message
+                assert str(send_exception) in log_message
+            else:
+                # Should send proper error response
+                sent_response = json.loads(server_proxy._ws.send.call_args[0][0])
+                assert sent_response["type"] == "error"
+                assert sent_response["response_to"] == "msg-123"
+                assert sent_response["data"] == "Test error message"
+                server_proxy.logger.debug.assert_called()
+        else:
+            # Should not send and log disconnect error
+            server_proxy._ws.send.assert_not_called()
+            server_proxy.logger.error.assert_called_with(
+                "Cannot send error response: WebSocket not connected"
+            )
 
-        # Verify debug message was logged
-        server_proxy.logger.debug.assert_called()
-        assert "Sent error response" in server_proxy.logger.debug.call_args[0][0]
+    def test_receive_handler_reconnection_logic(self, server_proxy):
+        """Test WebSocket reconnection logic in receive handler."""
 
-    def test_ws_error_response_disconnected(self, server_proxy):
-        """Test sending a WebSocket error response when disconnected."""
-        # Set up the WebSocket instance but disconnected state
-        server_proxy._ws = MagicMock()
-        server_proxy._ws_connected = False
+        server_proxy.api_config.host = "http://localhost:8000"
 
-        # Call the method
-        server_proxy._ws_error_response("msg-123", "Test error message")
+        with (patch('fyn_runner.server.server_proxy.WebSocketApp') as mock_ws_app,
+              patch('fyn_runner.server.server_proxy.time.sleep') as mock_sleep):
 
-        # Verify no message was sent
-        server_proxy._ws.send.assert_not_called()
+            # Track calls to run_forever
+            call_count = 0
 
-        # Verify error was logged
-        server_proxy.logger.error.assert_called_with(
-            "Cannot send error response: WebSocket not connected"
-        )
+            def mock_ws_factory(*_, **__):
+                nonlocal call_count
+                call_count += 1
+                mock_ws_instance = MagicMock()
 
-    def test_ws_error_response_send_exception(self, server_proxy):
-        """Test handling an exception when sending a WebSocket error response."""
-        # Set up the WebSocket connection state with an error on send
-        server_proxy._ws = MagicMock()
-        server_proxy._ws_connected = True
-        error_msg = "Send failed"
-        server_proxy._ws.send.side_effect = Exception(error_msg)
+                def mock_run_forever():
+                    if call_count == 1:
+                        # First call: simulate connection lost, return to trigger reconnection
+                        return
+                    # Second call: just wait for running to be set to False
+                    while server_proxy.running:
+                        time.sleep(0.01)
 
-        # Call the method
-        server_proxy._ws_error_response("msg-123", "Test error message")
+                mock_ws_instance.run_forever.side_effect = mock_run_forever
+                return mock_ws_instance
 
-        # Verify send was called
-        server_proxy._ws.send.assert_called_once()
+            mock_ws_app.side_effect = mock_ws_factory
 
-        # Verify error was logged
-        server_proxy.logger.error.assert_called_once()
-        log_message = server_proxy.logger.error.call_args[0][0]
-        assert "Failed to send error response" in log_message
-        assert error_msg in log_message
+            # Start the handler in a separate thread
+            server_proxy.running = True
+            handler_thread = threading.Thread(target=server_proxy._receive_handler)
+            handler_thread.daemon = True
+            handler_thread.start()
+
+            # Wait for reconnection logic to trigger
+            time.sleep(0.2)
+
+            # Stop the handler
+            server_proxy.running = False
+            handler_thread.join(timeout=1.0)
+
+            # Verify reconnection attempt
+            assert mock_ws_app.call_count == 2  # Initial + reconnect
+            server_proxy.logger.warning.assert_called_with(
+                "WebSocket disconnected, reconnecting...")
+            # Check that sleep was called with 5 seconds (reconnection delay)
+            assert any(call[0][0] == 5 for call in mock_sleep.call_args_list)
+
+    def test_receive_handler_exception_handling(self, server_proxy):
+        """Test exception handling in receive handler."""
+
+        server_proxy.api_config.host = "http://localhost:8000"
+
+        with patch('fyn_runner.server.server_proxy.WebSocketApp') as mock_ws_app:
+
+            # First call raises exception, second call succeeds
+            call_count = 0
+
+            def mock_ws_app_side_effect(*_, **__):
+                nonlocal call_count
+                call_count += 1
+                if call_count == 1:
+                    raise RuntimeError("WebSocket creation failed")
+                mock_ws_instance = MagicMock()
+                # Second call: wait for running to be set to False
+
+                def mock_run_forever():
+                    while server_proxy.running:
+                        time.sleep(0.01)
+                mock_ws_instance.run_forever.side_effect = mock_run_forever
+                return mock_ws_instance
+
+            mock_ws_app.side_effect = mock_ws_app_side_effect
+
+            # Start the handler in a separate thread
+            server_proxy.running = True
+            handler_thread = threading.Thread(target=server_proxy._receive_handler)
+            handler_thread.daemon = True
+            handler_thread.start()
+
+            # Wait a bit for the error handling to trigger
+            time.sleep(0.1)
+
+            # Stop the handler
+            server_proxy.running = False
+            handler_thread.join(timeout=1.0)
+
+            # Verify error handling
+            server_proxy.logger.error.assert_called_with(
+                "WebSocket error: WebSocket creation failed")
+
+    def test_websocket_header_configuration(self, server_proxy):
+        """Test WebSocket header configuration with token."""
+
+        server_proxy.api_config.host = "http://localhost:8000"
+
+        with patch('fyn_runner.server.server_proxy.WebSocketApp') as mock_ws_app:
+
+            mock_ws_instance = MagicMock()
+            mock_ws_app.return_value = mock_ws_instance
+
+            # Mock run_forever to wait for running to be set to False
+            def mock_run_forever():
+                while server_proxy.running:
+                    time.sleep(0.01)
+            mock_ws_instance.run_forever.side_effect = mock_run_forever
+
+            # Start the handler in a separate thread
+            server_proxy.running = True
+            handler_thread = threading.Thread(target=server_proxy._receive_handler)
+            handler_thread.daemon = True
+            handler_thread.start()
+
+            # Wait a bit for the WebSocket to be created
+            time.sleep(0.1)
+
+            # Stop the handler
+            server_proxy.running = False
+            handler_thread.join(timeout=1.0)
+
+            # Verify WebSocket was created with correct headers
+            mock_ws_app.assert_called_once()
+            call_args = mock_ws_app.call_args
+            assert 'header' in call_args[1]
+            assert call_args[1]['header']['token'] == server_proxy.token
+
+    def test_shutdown_behavior(self, server_proxy):
+        """Test that setting running to False stops the WebSocket handler."""
+
+        server_proxy.api_config.host = "http://localhost:8000"
+
+        with patch('fyn_runner.server.server_proxy.WebSocketApp') as mock_ws_app:
+
+            mock_ws_instance = MagicMock()
+            mock_ws_app.return_value = mock_ws_instance
+
+            # Mock run_forever to wait for running to be set to False
+            def mock_run_forever():
+                while server_proxy.running:
+                    time.sleep(0.01)
+            mock_ws_instance.run_forever.side_effect = mock_run_forever
+
+            # Start the handler in a separate thread
+            server_proxy.running = True
+            handler_thread = threading.Thread(target=server_proxy._receive_handler)
+            handler_thread.daemon = True
+            handler_thread.start()
+
+            # Wait a bit for the WebSocket to be created
+            time.sleep(0.1)
+
+            # Stop the handler
+            server_proxy.running = False
+            handler_thread.join(timeout=1.0)
+
+            # Verify the thread stopped gracefully
+            assert not handler_thread.is_alive()
+
+            # Should only call WebSocket once since we stopped cleanly
+            assert mock_ws_app.call_count == 1
+
+    def test_websocket_error_handling_during_creation(self, server_proxy):
+        """Test error handling when WebSocketApp creation fails."""
+
+        server_proxy.api_config.host = "http://localhost:8000"
+
+        with patch('fyn_runner.server.server_proxy.WebSocketApp') as mock_ws_app:
+
+            # Set up to raise error on first call, succeed on second
+            call_count = 0
+
+            def side_effect_counter(*_, **__):
+                nonlocal call_count
+                call_count += 1
+                if call_count == 1:
+                    raise RuntimeError("WebSocket creation failed")
+                mock_ws_instance = MagicMock()
+                # Second call: wait for running to be set to False
+
+                def mock_run_forever():
+                    while server_proxy.running:
+                        time.sleep(0.01)
+                mock_ws_instance.run_forever.side_effect = mock_run_forever
+                return mock_ws_instance
+
+            mock_ws_app.side_effect = side_effect_counter
+
+            # Start the handler in a separate thread
+            server_proxy.running = True
+            handler_thread = threading.Thread(target=server_proxy._receive_handler)
+            handler_thread.daemon = True
+            handler_thread.start()
+
+            # Wait a bit for the error handling to trigger
+            time.sleep(0.1)
+
+            # Stop the handler
+            server_proxy.running = False
+            handler_thread.join(timeout=1.0)
+
+            # Should have logged the error
+            server_proxy.logger.error.assert_called_with(
+                "WebSocket error: WebSocket creation failed")
+
+    def test_atexit_registration(self, mock_logger, mock_file_manager, mock_configuration):
+        """Test that cleanup is registered with atexit."""
+        with (patch('atexit.register') as mock_register,
+              patch('threading.Thread'),
+              patch('fyn_api_client.Configuration'),
+              patch('fyn_api_client.ApiClient'),
+              patch('fyn_api_client.RunnerManagerApi'),
+              patch.object(ServerProxy, '_report_status')):
+
+            ServerProxy(mock_logger, mock_file_manager, mock_configuration)
+
+            # Should register cleanup with atexit
+            mock_register.assert_called_once_with(ANY, fac.StateEnum.OF)
+
+            # The first argument should be the _report_status method
+            call_args = mock_register.call_args[0]
+            assert len(call_args) == 2
+            assert call_args[1] == fac.StateEnum.OF

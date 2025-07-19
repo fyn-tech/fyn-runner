@@ -11,7 +11,6 @@
 # You should have received a copy of the GNU General Public License along with this program. If not,
 #  see <https://www.gnu.org/licenses/>.
 
-
 import argparse
 import sys
 
@@ -21,7 +20,7 @@ from fyn_runner.system.collection import report_current_system_info
 from fyn_runner.utilities.config_manager import ConfigManager
 from fyn_runner.utilities.file_manager import FileManager
 from fyn_runner.utilities.logging_utilities import create_logger
-
+from fyn_runner.job_management.job_manager import JobManager
 
 def main():
     """Runner entry point."""
@@ -46,18 +45,22 @@ def main():
         config = ConfigManager(args.config, RunnerConfig)
         config.load()
         file_manager = FileManager(config.file_manager.working_directory)
+        file_manager.init_directories()
         logger = create_logger(file_manager.log_dir, **config.logging.model_dump())
         config.attach_logger(logger)
         proxy = ServerProxy(logger, file_manager, config.server_proxy)
-        report_current_system_info(logger, file_manager, proxy)
+        manager = JobManager(proxy, file_manager, logger, config.job_manager)
+        # report_current_system_info(logger, file_manager, proxy)
     except Exception as e:
         if logger:
             logger.critical(f"Fatal error encounter on startup: {e}")
         else:
             print(f"Critical error, before logger start: {e}")
-            sys.exit(1)
+        sys.exit(1)
 
     logger.info("Initialisation complete, handing program control to the JobManager")
+
+    manager.main()
 
     proxy.running = False
     logger.info("Runner terminating")
