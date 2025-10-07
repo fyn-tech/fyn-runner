@@ -11,6 +11,7 @@
 # You should have received a copy of the GNU General Public License along with this program. If not,
 #  see <https://www.gnu.org/licenses/>.
 
+import itertools
 import time
 from queue import PriorityQueue, Empty
 from threading import Thread
@@ -74,6 +75,7 @@ class JobManager:
         self.logger = logger
 
         # Job queues
+        self._counter = itertools.count()  # used to prevent job equality checking
         self._pending_queue: PriorityQueue = PriorityQueue()
         self._job_activity_tracker: ActiveJobTracker = ActiveJobTracker()
         self._observer_threads: dict[Thread] = {}
@@ -85,6 +87,7 @@ class JobManager:
         self._max_main_loop_count = configuration.max_main_loop_count
 
         # Initialse manager
+        self._attached_job_listener()
         self._fetch_jobs()
 
     def _fetch_jobs(self):
@@ -108,7 +111,7 @@ class JobManager:
         if api_response is not None:
             for job in api_response:
                 if jat.job_status_to_activity_status(job.status) == ActivityState.PENDING:
-                    self._pending_queue.put((job.priority, job))
+                    self._pending_queue.put(item=(job.priority, next(self._counter), job))
                 else:
                     self._job_activity_tracker.add_job(job)
 
@@ -156,7 +159,7 @@ class JobManager:
                 if no_active_jobs < self._max_concurrent_jobs:
                     try:
                         # Get next job to launch
-                        _, job_info = self._pending_queue.get(timeout=30)
+                        _, _, job_info = self._pending_queue.get(timeout=30)
                         self._launch_new_job(job_info)
 
                     except Empty:
@@ -218,7 +221,7 @@ class JobManager:
                                                                patched_job_info_request=jir)
 
                 # re-add
-                self._pending_queue.put((job_info.priority, job_info))
+                self._pending_queue.put((job_info.priority, next(self._counter), job_info))
 
                 # if the error occoured after its status was changed it must be removed.
                 if self._job_activity_tracker.is_tracked(job_info.id):
