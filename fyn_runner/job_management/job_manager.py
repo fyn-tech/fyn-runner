@@ -132,6 +132,17 @@ class JobManager:
         """
         self.logger.warning("Attach job listener not implemented, wip")
 
+        self.server_proxy.register_observer("new_job", self.fetch_and_add)
+
+    def fetch_and_add(self, job_ws):
+        """Call back function to receiving new job requests from the backend.
+
+        Args:
+            job_ws: The json websocket message from the backend, should contain the job_id key.
+        """
+        job_info = self.job_api.job_manager_users_retrieve(id=job_ws['job_id'])
+        self._pending_queue.put(item=(job_info.priority, next(self._counter), job_info))
+
     # ----------------------------------------------------------------------------------------------
     #  Job Methods
     # ----------------------------------------------------------------------------------------------
