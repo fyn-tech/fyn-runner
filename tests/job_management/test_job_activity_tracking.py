@@ -11,6 +11,8 @@
 # You should have received a copy of the GNU General Public License along with this program. If not,
 #  see <https://www.gnu.org/licenses/>.
 
+# pylint: disable=protected-access
+
 import threading
 import time
 from unittest.mock import MagicMock
@@ -36,12 +38,12 @@ class TestJobStatusToActivityStatus:
     def test_active_status_mappings(self):
         """Test that all active statuses map to ACTIVE activity state."""
         active_statuses = [
-            StatusEnum.PR,  
-            StatusEnum.FR,  
-            StatusEnum.RN, 
-            StatusEnum.PD,  
-            StatusEnum.CU,  
-            StatusEnum.UR   
+            StatusEnum.PR,
+            StatusEnum.FR,
+            StatusEnum.RN,
+            StatusEnum.PD,
+            StatusEnum.CU,
+            StatusEnum.UR
         ]
 
         for status in active_statuses:
@@ -51,17 +53,23 @@ class TestJobStatusToActivityStatus:
     def test_complete_status_mappings(self):
         """Test that all completion statuses map to COMPLETE activity state."""
         complete_statuses = [
-            StatusEnum.SD, 
-            StatusEnum.FD,  
-            StatusEnum.FS, 
+            StatusEnum.SD,
+            StatusEnum.FD,
+            StatusEnum.FS,
             StatusEnum.FM,
-            StatusEnum.FO, 
-            StatusEnum.FE  
+            StatusEnum.FO,
+            StatusEnum.FE
         ]
 
         for status in complete_statuses:
             result = job_status_to_activity_status(status)
             assert result == ActivityState.COMPLETE, f"Status {status} should map to COMPLETE"
+
+    def test_uploading_input_resources_status_raises_error(self):
+        """Test that uploading input resources status enum raises RuntimeError."""
+        with pytest.raises(RuntimeError, match="The runner is does not support jobs "
+                           "which are in the uploading input resources state"):
+            job_status_to_activity_status(StatusEnum.UI)
 
     def test_unknown_status_raises_error(self):
         """Test that unknown status enum raises ValueError."""

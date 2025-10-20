@@ -29,7 +29,8 @@ def job_status_to_activity_status(status):
 
     Converts OpenAPI client status enumerators to local ActivityState enums for internal tracking.
     This mapping helps determine whether a job should be considered as using active system
-    resources.
+    resources. Note that the runner is not designed to support/or fetch  jobs in the 'uploading
+    input resources' state.
 
     Args:
         status(StatusEnum): The OpenAPI client job status enumerator.
@@ -38,9 +39,14 @@ def job_status_to_activity_status(status):
         ActivityState: The corresponding local activity status enum.
 
     Raises:
+        RuntimeError: If an job status enumerator is in the Uploading Input Resources state.
         ValueError: If an unknown job status enumerator is provided.
     """
     match (status):
+        case StatusEnum.UI:
+            raise RuntimeError("The runner is does not support jobs which are in the "
+                               f"uploading input resources state: {status}")
+
         case StatusEnum.QD:
             return ActivityState.PENDING
 

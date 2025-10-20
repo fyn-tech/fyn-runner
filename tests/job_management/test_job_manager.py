@@ -11,14 +11,16 @@
 # You should have received a copy of the GNU General Public License along with this program. If not,
 #  see <https://www.gnu.org/licenses/>.
 
+# pylint: disable=protected-access
+
 from unittest.mock import MagicMock, patch, call
 from queue import Empty
-import pytest
+import itertools
 import math
+import pytest
 
-from fyn_runner.job_management.job_manager import JobManager
 from fyn_api_client.models.status_enum import StatusEnum
-from fyn_api_client.models.patched_job_info_runner_request import PatchedJobInfoRunnerRequest
+from fyn_runner.job_management.job_manager import JobManager
 from fyn_runner.job_management.job_activity_tracking import ActivityState
 
 
@@ -109,6 +111,10 @@ class TestJobManager:
             manager = JobManager(mock_server_proxy, mock_file_manager, mock_logger,
                                  mock_configuration)
 
+        # Increment the counter
+        counter_start = 3
+        manager._counter = itertools.count(start=counter_start)
+
         # Create mock jobs
         pending_job = MagicMock()
         pending_job.priority = 5
@@ -124,8 +130,12 @@ class TestJobManager:
                                                                 completed_job]
 
         # Mock job_status_to_activity_status
-        with patch('fyn_runner.job_management.job_manager.jat.job_status_to_activity_status') as mock_status_converter:
-            mock_status_converter.side_effect = [ActivityState.PENDING, ActivityState.ACTIVE, ActivityState.COMPLETE]
+        with (patch('fyn_runner.job_management.job_manager.jat.job_status_to_activity_status')
+              as mock_status_converter):
+            mock_status_converter.side_effect = [
+                ActivityState.PENDING,
+                ActivityState.ACTIVE,
+                ActivityState.COMPLETE]
 
             # Mock queue size and job count
             mock_queue.qsize.return_value = 1
@@ -139,7 +149,7 @@ class TestJobManager:
             manager.job_api.job_manager_runner_list.assert_called_once()
 
             # Verify pending job was queued
-            mock_queue.put.assert_called_once_with((5, pending_job))
+            mock_queue.put.assert_called_once_with((5, counter_start, pending_job))
 
             # Verify active and completed jobs were added to tracker
             assert mock_tracker.add_job.call_count == 2
@@ -204,17 +214,109 @@ class TestJobManager:
 
     def test_attached_job_listener(self, mock_server_proxy, mock_file_manager, mock_logger,
                                    mock_configuration):
-        """Test attached job listener placeholder method."""
-        with (patch('fyn_runner.job_management.job_manager.PriorityQueue'),
-              patch('fyn_runner.job_management.job_manager.ActiveJobTracker'),
+        """Test WebSocket listener attachment."""
+        with (patch('fyn_runner.job_management.job_manager.PriorityQueue') as mock_queue_class,
+              patch('fyn_runner.job_management.job_manager.ActiveJobTracker') as mock_tracker_class,
               patch.object(JobManager, '_fetch_jobs', lambda self: None)):
+
+            # Create mocked instances
+            mock_queue = MagicMock()
+            mock_tracker = MagicMock()
+            mock_queue_class.return_value = mock_queue
+            mock_tracker_class.return_value = mock_tracker
+
             manager = JobManager(mock_server_proxy, mock_file_manager, mock_logger,
                                  mock_configuration)
 
-        manager._attached_job_listener()
+        # Verify observer was registered
+        mock_server_proxy.register_observer.assert_called_once_with(
+            "new_job", manager.fetch_and_add)
 
-        # Just verify the warning is logged
-        mock_logger.warning.assert_called_once_with("Attach job listener not implemented, wip")
+    def test_fetch_and_add_success(self, mock_server_proxy, mock_file_manager, mock_logger,
+                                   mock_configuration):
+        """Test successful fetch and add of new job from WebSocket."""
+        with (patch('fyn_runner.job_management.job_manager.PriorityQueue') as mock_queue_class,
+              patch('fyn_runner.job_management.job_manager.ActiveJobTracker') as mock_tracker_class,
+              patch.object(JobManager, '_fetch_jobs', lambda self: None)):
+
+            # Create mocked instances
+            mock_queue = MagicMock()
+            mock_tracker = MagicMock()
+            mock_queue_class.return_value = mock_queue
+            mock_tracker_class.return_value = mock_tracker
+
+            manager = JobManager(mock_server_proxy, mock_file_manager, mock_logger,
+                                 mock_configuration)
+
+        # Set up counter
+        counter_start = 5
+        manager._counter = itertools.count(start=counter_start)
+
+        # Create mock job info
+        mock_job_info = MagicMock()
+        mock_job_info.id = 123
+        mock_job_info.priority = 7
+
+        # Mock the API response
+        manager.job_api.job_manager_users_retrieve.return_value = mock_job_info
+
+        # Create WebSocket message
+        job_ws = {'job_id': 123}
+
+        # Call fetch_and_add
+        manager.fetch_and_add(job_ws)
+
+        # Verify API was called with correct job_id
+        manager.job_api.job_manager_users_retrieve.assert_called_once_with(id=123)
+
+        # Verify job was added to queue with correct format
+        mock_queue.put.assert_called_once_with((7, counter_start, mock_job_info))
+
+    def test_fetch_and_add_missing_job_id(self, mock_server_proxy, mock_file_manager, mock_logger,
+                                          mock_configuration):
+        """Test fetch_and_add handles missing job_id in WebSocket message."""
+        with (patch('fyn_runner.job_management.job_manager.PriorityQueue') as mock_queue_class,
+              patch('fyn_runner.job_management.job_manager.ActiveJobTracker') as mock_tracker_class,
+              patch.object(JobManager, '_fetch_jobs', lambda self: None)):
+
+            mock_queue = MagicMock()
+            mock_tracker = MagicMock()
+            mock_queue_class.return_value = mock_queue
+            mock_tracker_class.return_value = mock_tracker
+
+            manager = JobManager(mock_server_proxy, mock_file_manager, mock_logger,
+                                 mock_configuration)
+
+        manager.fetch_and_add({})
+
+        # Verify error logged and nothing queued
+        mock_logger.error.assert_called_once()
+        assert "missing 'job_id'" in mock_logger.error.call_args[0][0]
+        mock_queue.put.assert_not_called()
+
+    def test_fetch_and_add_api_failure(self, mock_server_proxy, mock_file_manager, mock_logger,
+                                       mock_configuration):
+        """Test fetch_and_add handles API failure gracefully."""
+        with (patch('fyn_runner.job_management.job_manager.PriorityQueue') as mock_queue_class,
+              patch('fyn_runner.job_management.job_manager.ActiveJobTracker') as mock_tracker_class,
+              patch.object(JobManager, '_fetch_jobs', lambda self: None)):
+
+            mock_queue = MagicMock()
+            mock_tracker = MagicMock()
+            mock_queue_class.return_value = mock_queue
+            mock_tracker_class.return_value = mock_tracker
+
+            manager = JobManager(mock_server_proxy, mock_file_manager, mock_logger,
+                                 mock_configuration)
+
+        manager.job_api.job_manager_users_retrieve.side_effect = Exception("API error")
+
+        manager.fetch_and_add({'job_id': 123})
+
+        # Verify error logged and nothing queued
+        mock_logger.error.assert_called()
+        assert "Failed to retrieve job 123" in mock_logger.error.call_args[0][0]
+        mock_queue.put.assert_not_called()
 
     def test_main_loop_launch_job(self, mock_server_proxy, mock_file_manager, mock_logger,
                                   mock_configuration):
@@ -235,7 +337,7 @@ class TestJobManager:
                                  mock_configuration)
 
             mock_job_info = MagicMock()
-            mock_queue.get.return_value = (5, mock_job_info)  # returns infinite mock_job_infos
+            mock_queue.get.return_value = (5, 0, mock_job_info)  # returns infinite mock_job_infos
             mock_tracker.get_active_jobs.return_value = []  # No active jobs
 
         with (patch.object(manager, '_cleanup_finished_threads') as mock_cleanup,
@@ -422,6 +524,8 @@ class TestJobManager:
             mock_thread.start.side_effect = Exception("Thread start error")
             mock_thread_class.return_value = mock_thread
 
+            count_start = 1
+            manager._counter = itertools.count(start=count_start)  # check counter is 'maintained'
             manager._launch_new_job(mock_job_info)
 
             # Verify error was logged
@@ -435,7 +539,8 @@ class TestJobManager:
             assert hasattr(request_obj, 'status')
 
             # Verify job was re-added to queue
-            mock_queue.put.assert_called_once_with((mock_job_info.priority, mock_job_info))
+            re_add_item = (mock_job_info.priority, count_start + 1, mock_job_info)
+            mock_queue.put.assert_called_once_with(re_add_item)
             assert mock_queue.task_done.call_count == 1  # Ensure only one task done is called.
 
             # Verify job was removed from tracker
@@ -460,7 +565,8 @@ class TestJobManager:
             manager = JobManager(mock_server_proxy, mock_file_manager, mock_logger,
                                  mock_configuration)
 
-        with (patch('fyn_runner.job_management.job_manager.Job', side_effect=Exception("Job error")),
+        with (patch('fyn_runner.job_management.job_manager.Job',
+                    side_effect=Exception("Job error")),
               patch('fyn_runner.job_management.job_manager.PatchedJobInfoRunnerRequest',
                     side_effect=Exception("API error"))):
 

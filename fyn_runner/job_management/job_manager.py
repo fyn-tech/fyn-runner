@@ -11,6 +11,7 @@
 # You should have received a copy of the GNU General Public License along with this program. If not,
 #  see <https://www.gnu.org/licenses/>.
 
+import itertools
 import time
 from queue import PriorityQueue, Empty
 from threading import Thread
@@ -74,6 +75,7 @@ class JobManager:
         self.logger = logger
 
         # Job queues
+        self._counter = itertools.count()  # used to prevent job equality checking
         self._pending_queue: PriorityQueue = PriorityQueue()
         self._job_activity_tracker: ActiveJobTracker = ActiveJobTracker()
         self._observer_threads: dict[Thread] = {}
@@ -85,6 +87,7 @@ class JobManager:
         self._max_main_loop_count = configuration.max_main_loop_count
 
         # Initialse manager
+        self._attached_job_listener()
         self._fetch_jobs()
 
     def _fetch_jobs(self):
@@ -108,7 +111,7 @@ class JobManager:
         if api_response is not None:
             for job in api_response:
                 if jat.job_status_to_activity_status(job.status) == ActivityState.PENDING:
-                    self._pending_queue.put((job.priority, job))
+                    self._pending_queue.put((job.priority, next(self._counter), job))
                 else:
                     self._job_activity_tracker.add_job(job)
 
@@ -123,11 +126,36 @@ class JobManager:
     def _attached_job_listener(self):
         """Attach WebSocket listeners for real-time job commands.
 
-        Todo:
-            Implementation pending - will handle real-time commands like job termination
-            and status updates from the backend.
+        Added a listener for new jobs and supplies the call back fetch_and_add to the observer.
         """
-        self.logger.warning("Attach job listener not implemented, wip")
+
+        self.logger.debug("Attach job listener not implemented, wip")
+
+        self.server_proxy.register_observer("new_job", self.fetch_and_add)
+
+    def fetch_and_add(self, job_ws):
+        """Callback function for receiving new job requests from the backend.
+
+        Args:
+            job_ws: The JSON websocket message from the backend, must contain the job_id key.
+        """
+        try:
+            if 'job_id' not in job_ws:
+                self.logger.error(f"WebSocket message missing 'job_id' key: {job_ws}")
+                return
+            job_id = job_ws['job_id']
+
+            try:
+                job_info = self.job_api.job_manager_users_retrieve(id=job_id)
+            except Exception as e:
+                self.logger.error(f"Failed to retrieve job {job_id} from API: {e}")
+                return
+
+            self._pending_queue.put((job_info.priority, next(self._counter), job_info))
+            self.logger.info(f"Successfully queued new job {job_id} from WebSocket")
+
+        except Exception as e:
+            self.logger.error(f"Unexpected error in fetch_and_add callback: {e}")
 
     # ----------------------------------------------------------------------------------------------
     #  Job Methods
@@ -156,7 +184,7 @@ class JobManager:
                 if no_active_jobs < self._max_concurrent_jobs:
                     try:
                         # Get next job to launch
-                        _, job_info = self._pending_queue.get(timeout=30)
+                        _, _, job_info = self._pending_queue.get(timeout=30)
                         self._launch_new_job(job_info)
 
                     except Empty:
@@ -192,6 +220,7 @@ class JobManager:
 
         self.logger.info(f"Launching new job {job_info.id}")
         thread = None
+        print("HERE")
         try:
             job = Job(job_info, self.server_proxy, self.file_manager, self.logger,
                       self._job_activity_tracker)
@@ -201,7 +230,7 @@ class JobManager:
             self._pending_queue.task_done()
 
         except Exception as e:
-
+            print("HERE")
             self.logger.error(f"Failed to launch new job: {e}")
 
             self._pending_queue.task_done()  # must clear the queue (it is done) -> re-adds below.
@@ -212,18 +241,23 @@ class JobManager:
 
             # Ensure server re-queues
             try:
+                print("HERE")
                 jir = PatchedJobInfoRunnerRequest(status=StatusEnum.QD)
                 job_info.status = StatusEnum.QD
                 self.job_api.job_manager_runner_partial_update(job_info.id,
                                                                patched_job_info_request=jir)
 
                 # re-add
-                self._pending_queue.put((job_info.priority, job_info))
+                next(self._counter)
+                print("HERE1")
 
+                self._pending_queue.put((job_info.priority, next(self._counter), job_info))
+
+                print("HERE12")
                 # if the error occoured after its status was changed it must be removed.
                 if self._job_activity_tracker.is_tracked(job_info.id):
                     self._job_activity_tracker.remove_job(job_info.id)
-            except BaseException:
+            except Exception:
                 self.logger.error(f"Job manager failed to reset job {job_info.id} with: {e}")
 
     def _cleanup_finished_threads(self):
