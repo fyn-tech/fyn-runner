@@ -27,8 +27,9 @@ from enum import Enum
 # Define mock enums that behave like the actual OpenAPI generated enums
 class MockStatusEnum(Enum):
     """Mock StatusEnum with all the status values used in the codebase."""
+    UI = "UPLOADING_INPUT_RESOURCES"
     QD = "QUEUED"
-    PR = "PREPARING" 
+    PR = "PREPARING"
     FR = "FETCHING_RESOURCES"
     RN = "RUNNING"
     PD = "PAUSED"
@@ -70,6 +71,7 @@ class MockStateEnum(Enum):
 # Create mock classes for OpenAPI model classes
 class MockJobInfoRunner(MagicMock):
     """Mock JobInfoRunner model."""
+
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.id = "mock-job-id"
@@ -83,6 +85,7 @@ class MockJobInfoRunner(MagicMock):
 
 class MockApp(MagicMock):
     """Mock App model."""
+
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.id = "mock-app-id"
@@ -92,6 +95,7 @@ class MockApp(MagicMock):
 
 class MockPatchedJobInfoRunnerRequest(MagicMock):
     """Mock PatchedJobInfoRunnerRequest model."""
+
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.status = kwargs.get('status')
@@ -101,6 +105,7 @@ class MockPatchedJobInfoRunnerRequest(MagicMock):
 
 class MockPatchedRunnerInfoRequest(MagicMock):
     """Mock PatchedRunnerInfoRequest model."""
+
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.state = kwargs.get('state')
@@ -144,7 +149,8 @@ mock_models.app.App = MockApp
 mock_models.type_enum = MagicMock()
 mock_models.type_enum.TypeEnum = MockTypeEnum
 mock_models.patched_job_info_runner_request = MagicMock()
-mock_models.patched_job_info_runner_request.PatchedJobInfoRunnerRequest = MockPatchedJobInfoRunnerRequest
+mock_models.patched_job_info_runner_request.PatchedJobInfoRunnerRequest = \
+    MockPatchedJobInfoRunnerRequest
 
 mock_fac.models = mock_models
 
@@ -156,7 +162,8 @@ sys.modules['fyn_api_client.models.resource_type_enum'] = mock_models.resource_t
 sys.modules['fyn_api_client.models.job_info_runner'] = mock_models.job_info_runner
 sys.modules['fyn_api_client.models.app'] = mock_models.app
 sys.modules['fyn_api_client.models.type_enum'] = mock_models.type_enum
-sys.modules['fyn_api_client.models.patched_job_info_runner_request'] = mock_models.patched_job_info_runner_request
+sys.modules['fyn_api_client.models.patched_job_info_runner_request'] = \
+    mock_models.patched_job_info_runner_request
 
 
 # Make the enums and classes available for import
