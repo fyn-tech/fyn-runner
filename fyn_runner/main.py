@@ -14,13 +14,9 @@
 import argparse
 import sys
 
-from fyn_runner.config import RunnerConfig
-from fyn_runner.server.server_proxy import ServerProxy
-from fyn_runner.system.collection import report_current_system_info
-from fyn_runner.utilities.config_manager import ConfigManager
-from fyn_runner.utilities.file_manager import FileManager
-from fyn_runner.utilities.logging_utilities import create_logger
-from fyn_runner.job_management.job_manager import JobManager
+import fyn_runner.command_line_interface.install as install
+import fyn_runner.command_line_interface.run as run
+import fyn_runner.command_line_interface.service as service
 
 def main():
     """Runner entry point."""
@@ -29,42 +25,23 @@ def main():
         prog='fyn_runner',
         description="Application to execute simulations and interact with the local and remote "
         "fyn-tech infrastructure.")
-    parser.add_argument(
-        '-c',
-        '--config',
-        default=FileManager().config_dir /
-        "fyn_runner_config.yaml",
-        type=str,
-        help="The path to the config file")
+    subparsers = parser.add_subparsers(dest='command')
+    install.add_subparser_args(subparsers.add_parser("install", help="Interactive runner setup"))
+    run.add_subparser_args(subparsers.add_parser("run", help="Runs the runner daemon"))
+    service.add_subparser_args(subparsers.add_parser("service", help="Manage the runner service (start/stop/status)"))
+
     args = parser.parse_args()
 
-    # Boot-up of runner
-    logger = None
-    proxy = None
-    try:
-        config = ConfigManager(args.config, RunnerConfig)
-        config.load()
-        file_manager = FileManager(config.file_manager.working_directory)
-        file_manager.init_directories()
-        logger = create_logger(file_manager.log_dir, **config.logging.model_dump())
-        config.attach_logger(logger)
-        proxy = ServerProxy(logger, file_manager, config.server_proxy)
-        manager = JobManager(proxy, file_manager, logger, config.job_manager)
-        # report_current_system_info(logger, file_manager, proxy)
-    except Exception as e:
-        if logger:
-            logger.critical(f"Fatal error encounter on startup: {e}")
-        else:
-            print(f"Critical error, before logger start: {e}")
-        sys.exit(1)
-
-    logger.info("Initialisation complete, handing program control to the JobManager")
-
-    manager.main()
-
-    proxy.running = False
-    logger.info("Runner terminating")
-
+    match args.command:
+        case 'install':
+            install.install(args)
+        case 'run':
+            run.run(args)
+        case 'service':
+            service.service()
+        case _:
+            print(f"Error: unknown command '{args.command}'")
+            parser.print_help()
 
 if __name__ == "__main__":
     main()
