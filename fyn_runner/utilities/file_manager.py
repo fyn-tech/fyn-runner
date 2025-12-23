@@ -50,8 +50,13 @@ class FileManager:
         # Simulation directory is always in user data (place holder)
         self._simulation_dir = self._runner_dir / "simulations"
 
-    def init_directories(self):
-        """Create folder structure."""
+    def init_directories(self, exists_ok=True):
+        """
+        Create folder structure.
+        
+        Args:
+            exists_ok: Is it ok if the directory exists (typically not if you are installing)
+        """
         for directory in [
             self.runner_dir,
             self.cache_dir,
@@ -59,7 +64,7 @@ class FileManager:
             self.log_dir,
             self.simulation_dir
         ]:
-            directory.mkdir(parents=True, exist_ok=True)
+            directory.mkdir(parents=True, exist_ok=exists_ok)
 
     @property
     def runner_dir(self):

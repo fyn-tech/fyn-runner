@@ -11,7 +11,7 @@
 # You should have received a copy of the GNU General Public License along with this program. If not,
 #  see <https://www.gnu.org/licenses/>.
 
-from pydantic import UUID4, BaseModel, Field
+from pydantic import UUID4, BaseModel, Field,  StrictStr
 
 
 class ServerProxyConfig(BaseModel):
@@ -21,7 +21,7 @@ class ServerProxyConfig(BaseModel):
         description="The name of the runner.")
     id: UUID4 = Field(
         description="The id the runner should use when interacting with the back-end")
-    token: UUID4 = Field(
+    token: StrictStr = Field(
         description="The authentication token which should be used when interacting with the "
         "back-end")
     report_interval: int = Field(

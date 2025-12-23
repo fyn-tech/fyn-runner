@@ -42,7 +42,7 @@ class ServerProxy:
         token (str): Authentication token for API requests.
     """
 
-    def __init__(self, logger, file_manager, configuration):
+    def __init__(self, logger, file_manager, configuration, is_run=True):
         """Initialize the ServerProxy with backend communication capabilities.
 
         Sets up REST API client configuration, initializes WebSocket connection, and starts the
@@ -54,6 +54,8 @@ class ServerProxy:
             file_manager: File manager instance (injected dependency).
             configuration: Configuration object containing runner details.
                 Must have attributes: name, id, token, report_interval.
+            is_run: Must the proxey initialise, i.e. open the web-socket connections, and register 
+                exit callbacks, set status etc, default true.
 
         Raises:
             Exception: If API client configuration fails.
@@ -88,9 +90,10 @@ class ServerProxy:
         self._ws_thread.daemon = True
 
         # initialisation procedure
-        self._report_status(fac.StateEnum.ID)
-        atexit.register(self._report_status, fac.StateEnum.OF)
-        self._ws_thread.start()
+        if is_run:
+            self._report_status(fac.StateEnum.ID)
+            atexit.register(self._report_status, fac.StateEnum.OF)
+            self._ws_thread.start()
 
     # ----------------------------------------------------------------------------------------------
     #  Server Proxy Interface
