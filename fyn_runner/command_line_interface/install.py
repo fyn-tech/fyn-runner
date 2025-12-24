@@ -36,6 +36,9 @@ def add_subparser_args(sub_parser):
         help="Adds context description for each setting")
 
 def install(args):
+
+
+    
     new_config = ConfigManager(Path("./test.yaml"), RunnerConfig)
     new_config.generate_interactively(args.use_defaults, args.description)
     new_config.save()
@@ -49,8 +52,8 @@ def install(args):
         print("Error: Invalid UUID format")
         print("Aborting setup.")
         exit(1)        
-    token = input("Enter Registration Token: ").strip()
-    work_dirctory = input("Enter Runner Working Directory (leave blank for default):").strip() or None
+
+
     add_to_startup = input("Add Fyn-Runner to startup apps [y/n]:").strip() or None
 
     print("Begining setup...")

@@ -12,43 +12,43 @@
 #  see <https://www.gnu.org/licenses/>.
 
 
+import appdirs
 from pathlib import Path
 
-import appdirs
-
+from fyn_runner.constants import APP_NAME, APP_AUTHOR, DEFAULT_WORK_DIRECTORY
 
 class FileManager:
     """
     Manages file locations and directory structures for the runner.
     """
 
-    def __init__(self, base_dir=None, app_name="fyn_runner", app_author="Fyn-Tech"):
+    def __init__(self, working_directory, simulation_directory):
         """
         Initialize the FileManager, by setting and then creating the runner's directory structure.
         Existing files/folders are ok.
 
         Args:
-            base_dir: Override for base directory (if None, uses appdirs)
-            app_name: Name of the application
-            app_author: Author/organization name
+            baseworking_directory_dir: Override for base directory (if None, uses appdirs)
+            simulation_directory: Location of the simulation directory (where cases are stored)
         """
-        self.app_name = app_name
-        self.app_author = app_author
 
         # Set up directories using appdirs if base_dir not specified
-        if base_dir is None:
-            self._runner_dir = Path(appdirs.user_data_dir(app_name, app_author))
-            self._cache_dir = Path(appdirs.user_cache_dir(app_name, app_author))
-            self._config_dir = Path(appdirs.user_config_dir(app_name, app_author))
-            self._log_dir = Path(appdirs.user_log_dir(app_name, app_author))
+        if working_directory == Path(DEFAULT_WORK_DIRECTORY):
+            self._runner_dir = Path(appdirs.user_data_dir(APP_NAME, APP_AUTHOR))
+            self._cache_dir = Path(appdirs.user_cache_dir(APP_NAME, APP_AUTHOR))
+            self._config_dir = Path(appdirs.user_config_dir(APP_NAME, APP_AUTHOR))
+            self._log_dir = Path(appdirs.user_log_dir(APP_NAME, APP_AUTHOR))
         else:
-            self._runner_dir = Path(base_dir)
+            self._runner_dir = Path(working_directory)
             self._cache_dir = self._runner_dir / "cache"
             self._config_dir = self._runner_dir / "config"
             self._log_dir = self._runner_dir / "logs"
 
-        # Simulation directory is always in user data (place holder)
-        self._simulation_dir = self._runner_dir / "simulations"
+        # Set default simulation directory, or specifed 
+        if simulation_directory == Path("simulations"):
+            self._simulation_dir = self._runner_dir / simulation_directory
+        else:
+            self._simulation_dir = simulation_directory
 
     def init_directories(self, exists_ok=True):
         """

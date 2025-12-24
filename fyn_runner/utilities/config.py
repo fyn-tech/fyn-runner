@@ -11,10 +11,12 @@
 # You should have received a copy of the GNU General Public License along with this program. If not,
 #  see <https://www.gnu.org/licenses/>.
 
+import appdirs
 from pathlib import Path
-
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 from typing import Literal
+
+from fyn_runner.constants import DEFAULT_WORK_DIRECTORY
 
 class LoggingConfig(BaseModel):
     """Configuration for the logger."""
@@ -31,5 +33,16 @@ class LoggingConfig(BaseModel):
 class FileManagerConfig(BaseModel):
     """Configuration for file management."""
     working_directory: Path = Field(
-        description="Root working directory for the runner (simulation directories may be located "
+        default=Path(DEFAULT_WORK_DIRECTORY),
+        description="Path to the runner's working directory (simulation directories may be located "
                     "else where). Defaults to appdirs")
+    simulation_directory: Path = Field(
+        default="simulations",
+        description="Path (absolute) to simulation directory (containing case folders) for the runner. Defaults to working_directory/simulations")
+    
+    @model_validator(mode='after')
+    def resolve_paths(self) -> 'FileManagerConfig':
+        """Resolve simulation_directory relative to working_directory if needed."""
+        if not self.simulation_directory.is_absolute():
+            self.simulation_directory = self.working_directory / self.simulation_directory
+        return self

@@ -23,8 +23,7 @@ from fyn_runner.job_management.job_manager import JobManager
 def add_subparser_args(sub_parser):
     sub_parser.add_argument('-c',
         '--config',
-        default=FileManager().config_dir /
-        "fyn_runner_config.yaml",
+        required=True,
         type=str,
         help="The path to the config file")
 
@@ -40,7 +39,7 @@ def run(args):
     try:
         config = ConfigManager(args.config, RunnerConfig)
         config.load()
-        file_manager = FileManager(config.file_manager.working_directory)
+        file_manager = FileManager(**config.file_manager)
         file_manager.init_directories()
         logger = create_logger(file_manager.log_dir, **config.logging.model_dump())
         config.attach_logger(logger)
