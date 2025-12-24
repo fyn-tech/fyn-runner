@@ -200,7 +200,7 @@ class JobManager:
 
             # check if we need to leave the main loop
             loop_count += 1
-            if loop_count >= self._max_main_loop_count:
+            if self._max_main_loop_count != 0 and loop_count >= self._max_main_loop_count:
                 self.logger.info(f"Reach max main loop count {loop_count}, exiting main loop.")
                 self._is_running = False
 

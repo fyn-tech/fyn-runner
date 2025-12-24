@@ -29,8 +29,8 @@ class JobManagerConfig(BaseModel):
         allow_inf_nan=True,
         description="The maximum number of concurrent jobs the runner can launh.")
     max_main_loop_count: int = Field(
-        default=math.inf,
-        gt=0,
+        default=0,
+        ge=0,
         allow_inf_nan=True,
         description="Typically for development, the number ticks the main wait thread must do "
-                    "before terminating.")
+                    "before terminating (0 = infinite, default).")
