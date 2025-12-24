@@ -37,63 +37,61 @@ def add_subparser_args(sub_parser):
 
 def install(args):
 
-
-    
-    new_config = ConfigManager(Path("./test.yaml"), RunnerConfig)
-    new_config.generate_interactively(args.use_defaults, args.description)
-    new_config.save()
-    print("\n\nDone")
-    exit(1)
-
-    runner_id = input("Enter Runner ID: ").strip()
-    try:
-        uuid_runner_id = UUID(runner_id)
-    except ValueError:
-        print("Error: Invalid UUID format")
-        print("Aborting setup.")
-        exit(1)        
-
-
-    add_to_startup = input("Add Fyn-Runner to startup apps [y/n]:").strip() or None
-
+    print("Welcome to the Fynbos Technologies Runner, Fyn-Runner, installation!")
     print("Begining setup...")
 
-    # Setup directory
-    file_manager = FileManager(work_dirctory)
+    # 1. Get User to Create Config
     try:
-        print(f"Setting up working directory: {file_manager.runner_dir}")
+        yaml_name = input("Enter name of this runner, "
+                          "(recommended to use registration name): ").strip()
+        
+    except Exception as e: 
+        print(f"error {e} \n FIXME")
+        exit(1)
+      
+    new_config = ConfigManager(Path(f"./{yaml_name}.yaml"), RunnerConfig)
+    new_config.generate_interactively(args.use_defaults, args.description)
+
+    # 2. Bootstrap the File Manager, and create the directories
+    try:
+        print(f"Setting up runner install directory...")
+        file_manager = FileManager(**new_config.file_manager)
+        new_config.config_path = file_manager.config_dir / Path(f"./{yaml_name}.yaml")
         file_manager.init_directories(False)
+        print(f"completed")
     except Exception as e:
-        print(f"Error while setting update working directory:\n{e}")
+        print(f"Error while setting install directory:\n{e}")
         print("Aborting setup.")
         exit(1)
+    
+    # 3. Create a Logger    
+    logger = create_logger(file_manager.log_dir, **new_config.logging.model_dump())
 
-    # Create a Logger    
-    logging_config = LoggingConfig()
-    logger = create_logger(file_manager.log_dir, **logging_config.model_dump())
-
-    # Register
+    # 4. Register
     try:
-        server_proxy_config = ServerProxyConfig(id=uuid_runner_id, token=token)
-        server_proxy = ServerProxy(logger, None, server_proxy_config, False)
+        print(f"Attempting to contact Fyn-Tech server and register runner...")
+        server_proxy = ServerProxy(logger, file_manager, new_config.server_proxy, False)
         runner_api = server_proxy.create_runner_manager_api()
-        request = RunnerManagerRunnerRegisterCreateRequest(id=runner_id, token=token)
+        request = RunnerManagerRunnerRegisterCreateRequest(id=server_proxy.id, 
+                                                           token=server_proxy.token)
         runner_info = runner_api.runner_manager_runner_register_create( request )
-        
+        new_config._config.server_proxy.name = runner_info.name
+        new_config._config.server_proxy.token = runner_info.token
+        print(f"completed")
     except Exception as e:
         print(f"Error registering with remote server:\n{e}")
         print("Aborting setup.")
         exit(1) 
-    print(f"{runner_info}")
+
+    # 5. Save the config
+    new_config.save()
 
 
-    # Setup config file
-
-    # Add startup apps
+    # 6. Setup application serveice, add startup apps
+    add_to_startup = input("Add Fyn-Runner to startup apps [y/n]:").strip() or None
 
 
     print("Setup completed successfully.")
-    # name = input(f"Runner name [{default_name}]: ").strip() or default_name
 
 def uninstall(args):
     pass
