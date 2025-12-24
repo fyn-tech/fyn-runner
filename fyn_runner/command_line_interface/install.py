@@ -12,20 +12,35 @@
 #  see <https://www.gnu.org/licenses/>.
 
 from uuid import UUID
+from pathlib import Path
 
 from fyn_api_client.models.runner_manager_runner_register_create_request import RunnerManagerRunnerRegisterCreateRequest
 
+from fyn_runner.config import RunnerConfig
 from fyn_runner.server.config import ServerProxyConfig
 from fyn_runner.server.server_proxy import ServerProxy
 from fyn_runner.utilities.file_manager import FileManager
 from fyn_runner.utilities.logging_utilities import create_logger 
 from fyn_runner.utilities.config import LoggingConfig 
+from fyn_runner.utilities.config_manager import ConfigManager 
 
 def add_subparser_args(sub_parser):
-    return
+    sub_parser.add_argument('--use_defaults',
+        required=False,
+        action='store_true',
+        help="Skip default options during runner installation")
+
+    sub_parser.add_argument('-d', '--description',
+        required=False,
+        action='store_true',
+        help="Adds context description for each setting")
 
 def install(args):
-    print("Welocme to the Fynbos Technologies's Runner, Fyn-Runner, installation")
+    new_config = ConfigManager(Path("./test.yaml"), RunnerConfig)
+    new_config.generate_interactively(args.use_defaults, args.description)
+    new_config.save()
+    print("\n\nDone")
+    exit(1)
 
     runner_id = input("Enter Runner ID: ").strip()
     try:
@@ -56,19 +71,12 @@ def install(args):
 
     # Register
     try:
-        print("here")
         server_proxy_config = ServerProxyConfig(id=uuid_runner_id, token=token)
-        print("here")
         server_proxy = ServerProxy(logger, None, server_proxy_config, False)
-        print("here")
         runner_api = server_proxy.create_runner_manager_api()
-        print("here11")
         request = RunnerManagerRunnerRegisterCreateRequest(id=runner_id, token=token)
-        print("here1")
-
         runner_info = runner_api.runner_manager_runner_register_create( request )
-        print("here")
-
+        
     except Exception as e:
         print(f"Error registering with remote server:\n{e}")
         print("Aborting setup.")

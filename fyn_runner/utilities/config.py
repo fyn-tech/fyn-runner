@@ -14,11 +14,11 @@
 from pathlib import Path
 
 from pydantic import BaseModel, Field
-
+from typing import Literal
 
 class LoggingConfig(BaseModel):
     """Configuration for the logger."""
-    level: str = Field(
+    level: Literal["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"] = Field(
         default="INFO",
         description="Logging level (DEBUG, INFO, WARNING, ERROR, CRITICAL)")
     develop: bool = Field(
@@ -31,6 +31,5 @@ class LoggingConfig(BaseModel):
 class FileManagerConfig(BaseModel):
     """Configuration for file management."""
     working_directory: Path = Field(
-        default=None,
         description="Root working directory for the runner (simulation directories may be located "
                     "else where). Defaults to appdirs")

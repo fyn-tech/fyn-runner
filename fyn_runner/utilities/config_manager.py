@@ -12,10 +12,10 @@
 #  see <https://www.gnu.org/licenses/>.
 
 from pathlib import Path
+from pydantic import BaseModel, ValidationError, create_model
+from pydantic_core import PydanticUndefined
 from typing import Generic, Optional, Type, TypeVar
-
 import yaml
-from pydantic import BaseModel
 
 T = TypeVar('T', bound=BaseModel)
 
@@ -84,7 +84,15 @@ class ConfigManager(Generic[T]):
             raise ValueError("No configuration loaded")
 
         with open(self.config_path, 'w', encoding='utf-8') as f:
-            yaml.dump(self._config.model_dump(), f)
+            yaml.safe_dump(self._config.model_dump(mode='json'), f, default_flow_style=False)
+
+    def generate_interactively(self, use_defaults, add_help_text):
+        """
+            TODO: FIXME
+        """
+        config_dict = generate_recursive("runner_config_root", self.model_cls, use_defaults, add_help_text)
+        self._config = self.model_cls(**config_dict)
+
 
     @property
     def config(self) -> T:
@@ -101,3 +109,45 @@ class ConfigManager(Generic[T]):
             raise ValueError("No configuration loaded")
 
         return self._config
+
+
+def generate_recursive(field_name, field_info, skip_default, add_help_text, level = 0):
+    print(f"{field_name}")
+    config_dict = {}
+    for sub_field_name, sub_field_info in field_info.model_fields.items():
+        if isinstance(sub_field_info.annotation, type) and issubclass(sub_field_info.annotation, BaseModel):
+            config_dict[sub_field_name] = generate_recursive(sub_field_name, sub_field_info.annotation, skip_default, add_help_text, level+1) 
+        else:
+            config_dict[sub_field_name] = prompt_setting(sub_field_name, sub_field_info, skip_default, add_help_text, level+1)
+    
+    return config_dict
+        
+def prompt_setting(field_name, field_info, use_defaults, add_help_text, level):
+    
+    has_default_value = field_info.default is not PydanticUndefined 
+    has_default_factory = field_info.default_factory is not None
+    has_default = has_default_value or has_default_factory
+    while True:
+        try:
+            user_input = None
+
+            if not (has_default and use_defaults):
+                prompt_text = (
+                    f"{'  '*level}{field_name}\n{'  '*level}Description: {field_info.description}"
+                    f"\n{'  '*level}Enter value{' (leave blank for default)' if has_default else ''}:"
+                    if add_help_text else 
+                    f"{'  '*level}Enter {field_name}"
+                    f"{' (leave blank for default)' if has_default else ""}:"
+                )
+
+                user_input = input(prompt_text).strip()
+
+            if has_default and (user_input is None or len(user_input) == 0):
+                user_input = field_info.default if has_default_value else field_info.default_factory()
+
+            TempModel = create_model('TempModel', **{field_name: (field_info.annotation, field_info)})
+            validated = TempModel(**{field_name: user_input})
+            return getattr(validated, field_name)
+        except ValidationError as e:
+            print(f"Failed to validate input: {e}")
+    
