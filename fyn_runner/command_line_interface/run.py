@@ -39,7 +39,7 @@ def run(args):
     try:
         config = ConfigManager(args.config, RunnerConfig)
         config.load()
-        file_manager = FileManager(**config.file_manager)
+        file_manager = FileManager(**config.file_manager.model_dump())
         file_manager.init_directories()
         logger = create_logger(file_manager.log_dir, **config.logging.model_dump())
         config.attach_logger(logger)

@@ -46,7 +46,7 @@ def install(args):
                           "(recommended to use registration name): ").strip()
         
     except Exception as e: 
-        print(f"error {e} \n FIXME")
+        print(f"error {e} \nAborting setup")
         exit(1)
       
     new_config = ConfigManager(Path(f"./{yaml_name}.yaml"), RunnerConfig)
@@ -55,9 +55,9 @@ def install(args):
     # 2. Bootstrap the File Manager, and create the directories
     try:
         print(f"Setting up runner install directory...")
-        file_manager = FileManager(**new_config.file_manager)
+        file_manager = FileManager(**new_config.file_manager.model_dump())
         new_config.config_path = file_manager.config_dir / Path(f"./{yaml_name}.yaml")
-        file_manager.init_directories(False)
+        file_manager.init_directories(False, True) # Ok if we simulation directory exists.
         print(f"completed")
     except Exception as e:
         print(f"Error while setting install directory:\n{e}")
@@ -80,12 +80,12 @@ def install(args):
         print(f"completed")
     except Exception as e:
         print(f"Error registering with remote server:\n{e}")
+        file_manager.remove_directories()
         print("Aborting setup.")
         exit(1) 
 
     # 5. Save the config
     new_config.save()
-
 
     # 6. Setup application serveice, add startup apps
     add_to_startup = input("Add Fyn-Runner to startup apps [y/n]:").strip() or None
@@ -94,4 +94,49 @@ def install(args):
     print("Setup completed successfully.")
 
 def uninstall(args):
+
+    remove_simulation_directory = input("Remove simulation directory "
+                                        "(potentially to lose data!) [y/n]:").strip() or None
+
+
+    print("Begining uninstall...")
+
+
+    # 1. Get the associated config, and create the required objects.
+    try:
+        yaml_name = input("Enter name of this runner, "
+                          "(recommended to use registration name): ").strip()
+        
+    except Exception as e: 
+        print(f"error {e} \n FIXME")
+        exit(1)
+      
+    new_config = ConfigManager(Path(f"./{yaml_name}.yaml"), RunnerConfig)
+    file_manager = FileManager(**new_config.file_manager.model_dump())
+    logger = create_logger(file_manager.log_dir, **new_config.logging.model_dump())
+
+    # 2. Deregister/delete the runner from the server
+    try:
+        print(f"Attempting to delete/register runner with Fyn-Tech server...")
+        server_proxy = ServerProxy(logger, file_manager, new_config.server_proxy, False)
+        runner_api = server_proxy.create_runner_manager_api()
+        runner_info = runner_api.runner_manager_runner_destroy( server_proxy.id )
+        print(f"completed")
+    except Exception as e:
+        print(f"Error deleteing with remote server:\n{e}")
+        print(f"Manual removal of remote runner, though the web UI, is requried.")
+
+
+    # 3. Remove all assocaiated directories
+    try:
+        print(f"Removing runner directories...")
+        file_manager.remove_directories(remove_simulation_directory)
+        print(f"completed")
+    except Exception as e:
+        print(f"Error while removing runner directories:\n{e}")
+        print(f"Manual removal of directories required.")
+        
+    # 4. Remove the service from the machine
+
+    print("Uninstall completed successfully.")
     pass

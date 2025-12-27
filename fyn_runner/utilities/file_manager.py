@@ -13,7 +13,9 @@
 
 
 import appdirs
+import os
 from pathlib import Path
+import shutil
 
 from fyn_runner.constants import APP_NAME, APP_AUTHOR, DEFAULT_WORK_DIRECTORY
 
@@ -40,31 +42,61 @@ class FileManager:
             self._log_dir = Path(appdirs.user_log_dir(APP_NAME, APP_AUTHOR))
         else:
             self._runner_dir = Path(working_directory)
-            self._cache_dir = self._runner_dir / "cache"
-            self._config_dir = self._runner_dir / "config"
-            self._log_dir = self._runner_dir / "logs"
+            self._cache_dir = Path(self._runner_dir / "cache")
+            self._config_dir = Path(self._runner_dir / "config")
+            self._log_dir = Path(self._runner_dir / "logs")
 
         # Set default simulation directory, or specifed 
         if simulation_directory == Path("simulations"):
-            self._simulation_dir = self._runner_dir / simulation_directory
+            self._simulation_dir = Path(self._runner_dir / simulation_directory)
         else:
-            self._simulation_dir = simulation_directory
+            self._simulation_dir = Path(simulation_directory)
 
-    def init_directories(self, exists_ok=True):
+    def init_directories(self, runner_exists_ok=True, sim_exists_ok=True):
         """
-        Create folder structure.
+        Create folder structure for the runner and simulation directories.
         
         Args:
-            exists_ok: Is it ok if the directory exists (typically not if you are installing)
+            runner_exists_ok: Is it ok if the runner directory exists (typically false for install)
+            sim_exists_ok: Is it ok if the simulation directory exists
         """
         for directory in [
             self.runner_dir,
             self.cache_dir,
             self.config_dir,
             self.log_dir,
-            self.simulation_dir
         ]:
-            directory.mkdir(parents=True, exist_ok=exists_ok)
+            directory.mkdir(parents=True, exist_ok=runner_exists_ok)
+
+        self.simulation_dir.mkdir(parents=True, exist_ok=sim_exists_ok)
+
+    def remove_directories(self, sim_delete=False):
+        """
+        Removes the directories (and their contents) associated with the runner.
+        
+        Args:
+            sim_delete: Must the simulation directory be deteled (must back up unsaved work), 
+                defaults to false.
+
+        Warning:
+            This method deletes all folders of the runner and subdirectores and files. Use with 
+            care. The removing a simulation directory should only be done once data is backed up.
+        
+        Note:
+            If the simulation directory is empty it will be deleted regardless of sim_delete, 
+            rational is its tidier and there is no loss of data.
+        """
+        for directory in [
+            self.runner_dir,
+            self.cache_dir,
+            self.config_dir,
+            self.log_dir,
+        ]:
+            shutil.rmtree(directory)
+
+        # remove the directory if requested, or if its empty
+        if sim_delete or (os.listdir(self.simulation_dir) == 0):
+            shutil.rmtree(self.simulation_dir)
 
     @property
     def runner_dir(self):
@@ -130,3 +162,4 @@ class FileManager:
             return case_directory
         except Exception as e:
             raise RuntimeError(f"Failed to create directory {case_directory}: {e}") from e
+
