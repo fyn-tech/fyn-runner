@@ -2,7 +2,7 @@
 # Generate API client from Django OpenAPI spec
 # Now using JWT authentication - no cookie workarounds needed!
 
-API_DIR=../fyn-api/
+API_DIR=${1:-../fyn-api/}
 RUNNER_DIR=${PWD}
 CLIENT_NAME="fyn_api_client"
 
