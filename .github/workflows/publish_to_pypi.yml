@@ -16,36 +16,42 @@ jobs:
     - uses: actions/checkout@v4
       with:
         fetch-depth: 0
-    
-    - name: Checkout fyn-api repository
-      uses: actions/checkout@v4
-      with:
-        repository: fyn-tech/fyn-api
-        path: ./fyn-api
-        # Remove token line if fyn-api is public
-    
+
     - name: Set up Python
       uses: actions/setup-python@v4
       with:
         python-version: '3.12'
-    
+
     - name: Install system dependencies
       run: |
         sudo apt-get update
         sudo apt-get install -y openjdk-11-jre-headless
-        npm install -g @openapitools/openapi-generator-cli 
-    
+        npm install -g @openapitools/openapi-generator-cli
+
     - name: Install Python dependencies
       run: |
         python -m pip install --upgrade pip
         pip install build
-    
+
+    - name: Download OpenAPI schema
+      run: |
+        curl -o fyn_api_client.yaml http://api.fyn-tech.com/schema/
+
     - name: Generate API client
       run: |
-        cd ./fyn-api
-        pip install -r requirements.txt
-        cd ../fyn-runner
-        bash scripts/generate_api_client.sh ./fyn-api
+        # Extract version from OpenAPI spec
+        API_VERSION=$(grep -m 1 'version:' fyn_api_client.yaml | sed 's/.*version: *//' | tr -d '"' | tr -d "'")
+        echo "Using API version: ${API_VERSION}"
+
+        # Generate Python client with extracted version
+        openapi-generator-cli generate \
+          -i fyn_api_client.yaml \
+          -g python \
+          -o ./fyn_api_client \
+          --additional-properties=packageName=fyn_api_client,packageVersion=${API_VERSION}
+
+        # Install the generated client
+        pip install --upgrade ./fyn_api_client
     
     - name: Build package
       run: python -m build
