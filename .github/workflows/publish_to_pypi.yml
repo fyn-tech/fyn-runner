@@ -1,15 +1,15 @@
-name: Publish to PyPI
+name: Test Package Build
 
 on:
-  release:
-    types: [published]
+  push:
+    # Trigger on any branch push for testing
+  pull_request:
 
 permissions:
   contents: read
-  id-token: write  # IMPORTANT for trusted publishing
 
 jobs:
-  build-and-publish:
+  test-build:
     runs-on: ubuntu-latest
     
     steps:
@@ -22,7 +22,7 @@ jobs:
       with:
         repository: fyn-tech/fyn-api
         path: ../fyn-api
-        token: ${{ secrets.FYN_API_ACCESS_TOKEN }}
+        # Remove token line if fyn-api is public
     
     - name: Set up Python
       uses: actions/setup-python@v4
@@ -50,6 +50,8 @@ jobs:
     - name: Build package
       run: python -m build
     
-    - name: Publish to PyPI
-      uses: pypa/gh-action-pypi-publish@release/v1
-      # No secrets needed! Uses OIDC trust
+    - name: Upload build artifacts
+      uses: actions/upload-artifact@v4
+      with:
+        name: python-package-distributions
+        path: dist/
