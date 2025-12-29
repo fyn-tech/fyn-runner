@@ -1,6 +1,10 @@
 [project]
 name = "fyn-runner"
-version = "0.1.0"
+authors = [
+    {name = "Fynbos Technologies"},
+]
+
+version = "0.0.1"
 dependencies = [
     "appdirs",
     "nvidia-ml-py",
