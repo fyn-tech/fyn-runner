@@ -30,7 +30,7 @@ dev = [
 ]
 
 [project.scripts]
-cli-name = "fyn_runner.main:main"
+fyn-runner = "fyn_runner.main:main"
 
 [tool.setuptools.packages.find]
 where = ["."]
