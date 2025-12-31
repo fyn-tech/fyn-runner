@@ -29,8 +29,9 @@ dev = [
     "pre-commit",
 ]
 
-[tool.setuptools]
-packages = ["fyn_runner"]
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["fyn_runner*"]
 
 [tool.autopep8]
 max_line_length = 100
