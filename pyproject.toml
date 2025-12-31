@@ -1,8 +1,16 @@
+[build-system]
+requires = ["setuptools>=61", "setuptools-scm>=8"]
+build-backend = "setuptools.build_meta"
+
 [project]
 name = "fyn-runner"
-version = "0.1.0"
+authors = [
+    {name = "Fynbos Technologies"},
+]
+dynamic = ["version"]
 dependencies = [
     "appdirs",
+    "fyn-api-client",
     "nvidia-ml-py",
     "psutil",
     "py-cpuinfo",
@@ -21,9 +29,8 @@ dev = [
     "pre-commit",
 ]
 
-production = [
-    "fyn_api_client"
-]
+[tool.setuptools]
+packages = ["fyn_runner"]
 
 [tool.autopep8]
 max_line_length = 100
@@ -68,3 +75,7 @@ ignored-modules = [
     "fyn_api_client.models.type_enum",
     "fyn_api_client.models.patched_job_info_runner_request",
 ]
+
+[tool.setuptools_scm]
+version_scheme = "guess-next-dev"
+local_scheme = "no-local-version"
