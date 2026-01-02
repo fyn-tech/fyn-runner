@@ -53,6 +53,7 @@ def install(args):
     new_config.generate_interactively(args.use_defaults, args.description)
 
     # 2. Bootstrap the File Manager, and create the directories
+    file_manager = None
     try:
         print(f"Setting up runner install directory...")
         file_manager = FileManager(**new_config.file_manager.model_dump())
@@ -84,8 +85,9 @@ def install(args):
         print("Aborting setup.")
         exit(1) 
 
-    # 5. Save the config
+    # 5. Save the config, and set the default config path
     new_config.save()
+    file_manager.create_default_config_path_file(file_manager.config_dir)
 
     # 6. Setup application serveice, add startup apps
     add_to_startup = input("Add Fyn-Runner to startup apps [y/n]:").strip() or None
@@ -96,7 +98,7 @@ def install(args):
 def uninstall(args):
 
     remove_simulation_directory = input("Remove simulation directory "
-                                        "(potentially to lose data!) [y/n]:").strip() or None
+                                        "(potential to lose data!) [y/n]:").strip() or None
 
 
     print("Begining uninstall...")
@@ -131,6 +133,7 @@ def uninstall(args):
     try:
         print(f"Removing runner directories...")
         file_manager.remove_directories(remove_simulation_directory)
+        file_manager.delete_default_config_path_file()
         print(f"completed")
     except Exception as e:
         print(f"Error while removing runner directories:\n{e}")
