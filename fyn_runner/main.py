@@ -30,15 +30,15 @@ def main():
     run.add_subparser_args(subparsers.add_parser("run", help="Runs the runner daemon"))
     service.add_subparser_args(subparsers.add_parser("service", help="Manage the runner service (start/stop/status)"))
 
-    args = parser.parse_args()
+    args, unknown_args = parser.parse_known_args()
 
     match args.command:
         case 'install':
-            install.install(args)
+            install.install(args, unknown_args)
         case 'run':
-            run.run(args)
+            run.run(args, unknown_args)
         case 'service':
-            service.service()
+            service.service(args, unknown_args)
         case _:
             print(f"Error: unknown command '{args.command}'")
             parser.print_help()
