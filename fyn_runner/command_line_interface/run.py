@@ -23,21 +23,30 @@ from fyn_runner.job_management.job_manager import JobManager
 def add_subparser_args(sub_parser):
     sub_parser.add_argument('-c',
         '--config',
-        required=True,
+
+        required=False,
         type=str,
         help="The path to the config file")
 
-def run(args):
+def run(args, unknown_args):
     """Runner entry point.
     
     args(): TODO FIXME    
     """
+    
+    if unknown_args is not None:
+        print(f"Unknown args parsed: {unknown_args}")
+
+    config_path = args.config or FileManager.get_default_config_path_file()
+    if not config_path:
+        print("Error: No configuration file found. Install the runner or or use -c option.")
+        sys.exit(1)
 
     # Boot-up of runner
     logger = None
     proxy = None
     try:
-        config = ConfigManager(args.config, RunnerConfig)
+        config = ConfigManager(config_path, RunnerConfig)
         config.load()
         file_manager = FileManager(**config.file_manager.model_dump())
         file_manager.init_directories()
