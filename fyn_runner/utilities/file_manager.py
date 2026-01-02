@@ -19,6 +19,8 @@ import shutil
 
 from fyn_runner.constants import APP_NAME, APP_AUTHOR, DEFAULT_WORK_DIRECTORY
 
+DEFAULT_CONFIG_PATH = Path(appdirs.user_cache_dir(APP_NAME, APP_AUTHOR))/"default_config.txt"
+
 class FileManager:
     """
     Manages file locations and directory structures for the runner.
@@ -133,6 +135,61 @@ class FileManager:
         """
         self._simulation_dir = Path(path)
         self._simulation_dir.mkdir(parents=True, exist_ok=True)
+
+    # ----------------------------------------------------------------------------------------------
+    #  Fixed Config Directory Methods
+    # ----------------------------------------------------------------------------------------------
+
+    @staticmethod
+    def create_default_config_path_file(config_path):
+        """
+        Create a pointer file containing the path to the user's configuration file.
+
+        This allows the service commands to locate the configuration file regardless of where
+        the user chose to store it during installation.
+
+        Args:
+            config_path (str or Path): Path to the actual configuration file.
+        """
+        DEFAULT_CONFIG_PATH.parent.mkdir(parents=True, exist_ok=True)
+        with open(DEFAULT_CONFIG_PATH, 'w', encoding='utf-8') as f:
+            f.write(str(config_path)) 
+
+
+    @staticmethod
+    def delete_default_config_path_file():
+        """
+        Remove the default configuration pointer file if it exists.
+
+        This is typically called during uninstallation to clean up the runner's cached data.
+        If the file doesn't exist, no action is taken.
+        """
+        if DEFAULT_CONFIG_PATH.exists():
+            os.remove(DEFAULT_CONFIG_PATH)
+
+
+    @staticmethod
+    def get_default_config_path_file():
+        """
+        Retrieve the path to the configuration file from the pointer file.
+
+        Returns:
+            Path: The path to the configuration file if the pointer exists and is valid.
+            None: If the pointer file doesn't exist or cannot be read.
+
+        Note:
+            This method fails silently and returns None on any error to allow graceful fallback
+            to other configuration resolution methods (environment variables, CLI arguments).
+        """
+        try:
+            if DEFAULT_CONFIG_PATH.exists():
+                with open(DEFAULT_CONFIG_PATH, 'r', encoding='utf-8') as f:
+                    config_path = f.read().strip()
+                return Path(config_path) if config_path else None
+            return None
+        except Exception:
+            return None  # Fail silently to allow fallback to other config sources
+        
 
     # ----------------------------------------------------------------------------------------------
     #  Simulation Directory Methods
