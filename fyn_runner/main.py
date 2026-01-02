@@ -26,6 +26,7 @@ def main():
         description="Application to execute simulations and interact with the local and remote "
         "fyn-tech infrastructure.")
     subparsers = parser.add_subparsers(dest='command')
+    subparsers.add_parser("uninstall", help="Uninstall runner") # had no further arguments
     install.add_subparser_args(subparsers.add_parser("install", help="Interactive runner setup"))
     run.add_subparser_args(subparsers.add_parser("run", help="Runs the runner daemon"))
     service.add_subparser_args(subparsers.add_parser("service", help="Manage the runner service (start/stop/status)"))
@@ -35,6 +36,8 @@ def main():
     match args.command:
         case 'install':
             install.install(args, unknown_args)
+        case 'uninstall':
+            install.uninstall(args, unknown_args)
         case 'run':
             run.run(args, unknown_args)
         case 'service':

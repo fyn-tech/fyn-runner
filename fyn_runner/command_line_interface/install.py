@@ -17,11 +17,9 @@ from pathlib import Path
 from fyn_api_client.models.runner_manager_runner_register_create_request import RunnerManagerRunnerRegisterCreateRequest
 
 from fyn_runner.config import RunnerConfig
-from fyn_runner.server.config import ServerProxyConfig
 from fyn_runner.server.server_proxy import ServerProxy
 from fyn_runner.utilities.file_manager import FileManager
 from fyn_runner.utilities.logging_utilities import create_logger 
-from fyn_runner.utilities.config import LoggingConfig 
 from fyn_runner.utilities.config_manager import ConfigManager 
 
 def add_subparser_args(sub_parser):
