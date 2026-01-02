@@ -35,7 +35,10 @@ def add_subparser_args(sub_parser):
         action='store_true',
         help="Adds context description for each setting")
 
-def install(args):
+def install(args, unknown_args):
+
+    if unknown_args is not None:
+        print(f"Unknown args parsed: {unknown_args}")
 
     print("Welcome to the Fynbos Technologies Runner, Fyn-Runner, installation!")
     print("Begining setup...")
@@ -95,7 +98,10 @@ def install(args):
 
     print("Setup completed successfully.")
 
-def uninstall(args):
+def uninstall(args, unknown_args):
+
+    if unknown_args is not None:
+        print(f"Unknown args parsed: {unknown_args}")
 
     remove_simulation_directory = input("Remove simulation directory "
                                         "(potential to lose data!) [y/n]:").strip() or None
