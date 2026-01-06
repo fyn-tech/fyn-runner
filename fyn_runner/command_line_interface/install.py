@@ -13,13 +13,17 @@
 
 from uuid import UUID
 from pathlib import Path
+import sys
+import subprocess
+import shutil
+import platform
 
 from fyn_api_client.models.runner_manager_runner_register_create_request import RunnerManagerRunnerRegisterCreateRequest
 
 from fyn_runner.config import RunnerConfig
 from fyn_runner.server.server_proxy import ServerProxy
 from fyn_runner.utilities.file_manager import FileManager
-from fyn_runner.utilities.logging_utilities import create_logger 
+from fyn_runner.utilities.logging_utilities import create_logger
 from fyn_runner.utilities.config_manager import ConfigManager 
 
 def add_subparser_args(sub_parser):
@@ -88,11 +92,18 @@ def install(args, unknown_args):
 
     # 5. Save the config, and set the default config path
     new_config.save()
-    file_manager.create_default_config_path_file(file_manager.config_dir)
+    file_manager.create_default_config_path_file(new_config.config_path)
 
-    # 6. Setup application serveice, add startup apps
-    add_to_startup = input("Add Fyn-Runner to startup apps [y/n]:").strip() or None
+    # 6. Setup application service, add startup apps
+    add_to_startup = input("Add Fyn-Runner to startup apps [y/n]: ").strip().lower()
 
+    if add_to_startup == 'y' or add_to_startup == 'yes':
+        try:
+            setup_auto_start()
+            print("Auto-start enabled successfully.")
+        except Exception as e:
+            print(f"Warning: Could not enable auto-start: {e}")
+            print("You can manually enable auto-start later.")
 
     print("Setup completed successfully.")
 
@@ -144,6 +155,184 @@ def uninstall(args, unknown_args):
         print(f"Manual removal of directories required.")
         
     # 4. Remove the service from the machine
+    try:
+        print("Removing auto-start configuration...")
+        remove_auto_start()
+        print("completed")
+    except Exception as e:
+        print(f"Warning: Could not remove auto-start: {e}")
+        print("You may need to manually remove the startup configuration.")
 
     print("Uninstall completed successfully.")
-    pass
+
+
+# ----------------------------------------------------------------------------------------------
+#  Auto-start Configuration Functions
+# ----------------------------------------------------------------------------------------------
+
+def setup_auto_start():
+    """
+    Configure the runner to start automatically on system boot.
+
+    Raises:
+        Exception: If auto-start setup fails
+    """
+    system = platform.system()
+
+    if system == "Linux":
+        _setup_systemd_service()
+    elif system == "Darwin":
+        _setup_launchd_service()
+    elif system == "Windows":
+        _setup_windows_task()
+    else:
+        raise Exception(f"Unsupported platform: {system}")
+
+
+def remove_auto_start():
+    """
+    Remove auto-start configuration.
+
+    Raises:
+        Exception: If removal fails
+    """
+    system = platform.system()
+
+    if system == "Linux":
+        _remove_systemd_service()
+    elif system == "Darwin":
+        _remove_launchd_service()
+    elif system == "Windows":
+        _remove_windows_task()
+    else:
+        raise Exception(f"Unsupported platform: {system}")
+
+
+def _setup_systemd_service():
+    """Setup systemd user service for Linux."""
+    systemd_dir = Path.home() / ".config" / "systemd" / "user"
+    systemd_dir.mkdir(parents=True, exist_ok=True)
+
+    service_file = systemd_dir / "fyn-runner.service"
+
+    # Get the path to fyn-runner executable
+    fyn_runner_path = shutil.which('fyn-runner')
+    if not fyn_runner_path:
+        raise Exception("fyn-runner executable not found in PATH")
+
+    service_content = f"""[Unit]
+Description=Fyn Runner Daemon
+After=network.target
+
+[Service]
+Type=simple
+ExecStart={fyn_runner_path} service start
+Restart=on-failure
+RestartSec=5s
+
+[Install]
+WantedBy=default.target
+"""
+
+    service_file.write_text(service_content)
+
+    # Enable the service (don't start immediately)
+    subprocess.run(["systemctl", "--user", "daemon-reload"], check=True)
+    subprocess.run(["systemctl", "--user", "enable", "fyn-runner.service"], check=True)
+
+
+def _remove_systemd_service():
+    """Remove systemd user service."""
+    service_file = Path.home() / ".config" / "systemd" / "user" / "fyn-runner.service"
+
+    # Stop and disable the service
+    subprocess.run(["systemctl", "--user", "stop", "fyn-runner.service"], check=False)
+    subprocess.run(["systemctl", "--user", "disable", "fyn-runner.service"], check=False)
+
+    # Remove the service file
+    if service_file.exists():
+        service_file.unlink()
+
+    subprocess.run(["systemctl", "--user", "daemon-reload"], check=False)
+
+
+def _setup_launchd_service():
+    """Setup launchd service for macOS."""
+    launch_agents_dir = Path.home() / "Library" / "LaunchAgents"
+    launch_agents_dir.mkdir(parents=True, exist_ok=True)
+
+    plist_file = launch_agents_dir / "com.fynbos.fyn-runner.plist"
+
+    # Get the path to fyn-runner executable
+    fyn_runner_path = shutil.which('fyn-runner')
+    if not fyn_runner_path:
+        raise Exception("fyn-runner executable not found in PATH")
+
+    plist_content = f"""<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.fynbos.fyn-runner</string>
+    <key>ProgramArguments</key>
+    <array>
+        <string>{fyn_runner_path}</string>
+        <string>service</string>
+        <string>start</string>
+    </array>
+    <key>RunAtLoad</key>
+    <true/>
+    <key>KeepAlive</key>
+    <true/>
+    <key>StandardErrorPath</key>
+    <string>{Path.home()}/Library/Logs/fyn-runner-error.log</string>
+    <key>StandardOutPath</key>
+    <string>{Path.home()}/Library/Logs/fyn-runner.log</string>
+</dict>
+</plist>
+"""
+
+    plist_file.write_text(plist_content)
+
+
+def _remove_launchd_service():
+    """Remove launchd service."""
+    plist_file = Path.home() / "Library" / "LaunchAgents" / "com.fynbos.fyn-runner.plist"
+
+    # Unload the service
+    if plist_file.exists():
+        subprocess.run(["launchctl", "unload", str(plist_file)], check=False)
+        plist_file.unlink()
+
+
+def _setup_windows_task():
+    """Setup Windows Task Scheduler task."""
+    # Get the path to fyn-runner executable
+    fyn_runner_path = shutil.which('fyn-runner')
+    if not fyn_runner_path:
+        raise Exception("fyn-runner executable not found in PATH")
+
+    # Create task using schtasks command
+    task_name = "FynRunner"
+
+    # Create the task
+    subprocess.run([
+        "schtasks", "/create",
+        "/tn", task_name,
+        "/tr", f'"{fyn_runner_path}" service start',
+        "/sc", "onlogon",
+        "/rl", "highest",
+        "/f"  # Force create (overwrite if exists)
+    ], check=True, shell=True)
+
+
+def _remove_windows_task():
+    """Remove Windows Task Scheduler task."""
+    task_name = "FynRunner"
+
+    # Delete the task
+    subprocess.run([
+        "schtasks", "/delete",
+        "/tn", task_name,
+        "/f"  # Force delete
+    ], check=False, shell=True)
