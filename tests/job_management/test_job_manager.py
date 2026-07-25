@@ -51,7 +51,7 @@ class TestJobManager:
         config = MagicMock()
         config.max_cpu = 4
         config.max_concurrent_jobs = 2
-        config.max_main_loop_count = math.inf
+        config.max_main_loop_count = 0
         return config
 
     @pytest.fixture
@@ -90,7 +90,7 @@ class TestJobManager:
             assert manager._is_running is True
             assert manager._max_cpu_usage == 4
             assert manager._max_concurrent_jobs == 2
-            assert manager._max_main_loop_count == math.inf
+            assert manager._max_main_loop_count == 0
 
             # Verify fetch jobs was called
             mock_fetch.assert_called_once()

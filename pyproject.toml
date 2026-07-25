@@ -29,6 +29,9 @@ dev = [
     "pre-commit",
 ]
 
+[project.scripts]
+fyn-runner = "fyn_runner.main:main"
+
 [tool.setuptools.packages.find]
 where = ["."]
 include = ["fyn_runner*"]

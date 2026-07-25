@@ -24,4 +24,3 @@ class RunnerConfig(BaseModel):
     job_manager: JobManagerConfig = Field(default_factory=JobManagerConfig)
     logging: LoggingConfig = Field(default_factory=LoggingConfig)
     server_proxy: ServerProxyConfig = Field(default_factory=ServerProxyConfig)
-    

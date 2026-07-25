@@ -12,54 +12,93 @@
 #  see <https://www.gnu.org/licenses/>.
 
 
-from pathlib import Path
-
 import appdirs
+import os
+from pathlib import Path
+import shutil
 
+from fyn_runner.constants import APP_NAME, APP_AUTHOR, DEFAULT_WORK_DIRECTORY
+
+DEFAULT_CONFIG_PATH = Path(appdirs.user_cache_dir(APP_NAME, APP_AUTHOR))/"default_config.txt"
 
 class FileManager:
     """
     Manages file locations and directory structures for the runner.
     """
 
-    def __init__(self, base_dir=None, app_name="fyn_runner", app_author="Fyn-Tech"):
+    def __init__(self, working_directory, simulation_directory):
         """
         Initialize the FileManager, by setting and then creating the runner's directory structure.
         Existing files/folders are ok.
 
         Args:
-            base_dir: Override for base directory (if None, uses appdirs)
-            app_name: Name of the application
-            app_author: Author/organization name
+            baseworking_directory_dir: Override for base directory (if None, uses appdirs)
+            simulation_directory: Location of the simulation directory (where cases are stored)
         """
-        self.app_name = app_name
-        self.app_author = app_author
 
         # Set up directories using appdirs if base_dir not specified
-        if base_dir is None:
-            self._runner_dir = Path(appdirs.user_data_dir(app_name, app_author))
-            self._cache_dir = Path(appdirs.user_cache_dir(app_name, app_author))
-            self._config_dir = Path(appdirs.user_config_dir(app_name, app_author))
-            self._log_dir = Path(appdirs.user_log_dir(app_name, app_author))
+        if working_directory == Path(DEFAULT_WORK_DIRECTORY):
+            self._runner_dir = Path(appdirs.user_data_dir(APP_NAME, APP_AUTHOR))
+            self._cache_dir = Path(appdirs.user_cache_dir(APP_NAME, APP_AUTHOR))
+            self._config_dir = Path(appdirs.user_config_dir(APP_NAME, APP_AUTHOR))
+            self._log_dir = Path(appdirs.user_log_dir(APP_NAME, APP_AUTHOR))
         else:
-            self._runner_dir = Path(base_dir)
-            self._cache_dir = self._runner_dir / "cache"
-            self._config_dir = self._runner_dir / "config"
-            self._log_dir = self._runner_dir / "logs"
+            self._runner_dir = Path(working_directory)
+            self._cache_dir = Path(self._runner_dir / "cache")
+            self._config_dir = Path(self._runner_dir / "config")
+            self._log_dir = Path(self._runner_dir / "logs")
 
-        # Simulation directory is always in user data (place holder)
-        self._simulation_dir = self._runner_dir / "simulations"
+        # Set default simulation directory, or specifed 
+        if simulation_directory == Path("simulations"):
+            self._simulation_dir = Path(self._runner_dir / simulation_directory)
+        else:
+            self._simulation_dir = Path(simulation_directory)
 
-    def init_directories(self):
-        """Create folder structure."""
+    def init_directories(self, runner_exists_ok=True, sim_exists_ok=True):
+        """
+        Create folder structure for the runner and simulation directories.
+        
+        Args:
+            runner_exists_ok: Is it ok if the runner directory exists (typically false for install)
+            sim_exists_ok: Is it ok if the simulation directory exists
+        """
         for directory in [
             self.runner_dir,
             self.cache_dir,
             self.config_dir,
             self.log_dir,
-            self.simulation_dir
         ]:
-            directory.mkdir(parents=True, exist_ok=True)
+            directory.mkdir(parents=True, exist_ok=runner_exists_ok)
+
+        self.simulation_dir.mkdir(parents=True, exist_ok=sim_exists_ok)
+
+    def remove_directories(self, sim_delete=False):
+        """
+        Removes the directories (and their contents) associated with the runner.
+        
+        Args:
+            sim_delete: Must the simulation directory be deteled (must back up unsaved work), 
+                defaults to false.
+
+        Warning:
+            This method deletes all folders of the runner and subdirectores and files. Use with 
+            care. The removing a simulation directory should only be done once data is backed up.
+        
+        Note:
+            If the simulation directory is empty it will be deleted regardless of sim_delete, 
+            rational is its tidier and there is no loss of data.
+        """
+        for directory in [
+            self.runner_dir,
+            self.cache_dir,
+            self.config_dir,
+            self.log_dir,
+        ]:
+            shutil.rmtree(directory)
+
+        # remove the directory if requested, or if its empty
+        if sim_delete or (os.listdir(self.simulation_dir) == 0):
+            shutil.rmtree(self.simulation_dir)
 
     @property
     def runner_dir(self):
@@ -98,6 +137,61 @@ class FileManager:
         self._simulation_dir.mkdir(parents=True, exist_ok=True)
 
     # ----------------------------------------------------------------------------------------------
+    #  Fixed Config Directory Methods
+    # ----------------------------------------------------------------------------------------------
+
+    @staticmethod
+    def create_default_config_path_file(config_path):
+        """
+        Create a pointer file containing the path to the user's configuration file.
+
+        This allows the service commands to locate the configuration file regardless of where
+        the user chose to store it during installation.
+
+        Args:
+            config_path (str or Path): Path to the actual configuration file.
+        """
+        DEFAULT_CONFIG_PATH.parent.mkdir(parents=True, exist_ok=True)
+        with open(DEFAULT_CONFIG_PATH, 'w', encoding='utf-8') as f:
+            f.write(str(config_path)) 
+
+
+    @staticmethod
+    def delete_default_config_path_file():
+        """
+        Remove the default configuration pointer file if it exists.
+
+        This is typically called during uninstallation to clean up the runner's cached data.
+        If the file doesn't exist, no action is taken.
+        """
+        if DEFAULT_CONFIG_PATH.exists():
+            os.remove(DEFAULT_CONFIG_PATH)
+
+
+    @staticmethod
+    def get_default_config_path_file():
+        """
+        Retrieve the path to the configuration file from the pointer file.
+
+        Returns:
+            Path: The path to the configuration file if the pointer exists and is valid.
+            None: If the pointer file doesn't exist or cannot be read.
+
+        Note:
+            This method fails silently and returns None on any error to allow graceful fallback
+            to other configuration resolution methods (environment variables, CLI arguments).
+        """
+        try:
+            if DEFAULT_CONFIG_PATH.exists():
+                with open(DEFAULT_CONFIG_PATH, 'r', encoding='utf-8') as f:
+                    config_path = f.read().strip()
+                return Path(config_path) if config_path else None
+            return None
+        except Exception:
+            return None  # Fail silently to allow fallback to other config sources
+        
+
+    # ----------------------------------------------------------------------------------------------
     #  Simulation Directory Methods
     # ----------------------------------------------------------------------------------------------
 
@@ -125,3 +219,4 @@ class FileManager:
             return case_directory
         except Exception as e:
             raise RuntimeError(f"Failed to create directory {case_directory}: {e}") from e
+
