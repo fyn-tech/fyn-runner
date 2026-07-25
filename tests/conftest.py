@@ -111,6 +111,15 @@ class MockPatchedRunnerInfoRequest(MagicMock):
         self.state = kwargs.get('state')
 
 
+class MockRunnerManagerRunnerRegisterCreateRequest(MagicMock):
+    """Mock RunnerManagerRunnerRegisterCreateRequest model."""
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.id = kwargs.get('id')
+        self.token = kwargs.get('token')
+
+
 # Create the main fyn_api_client mock module
 mock_fac = MagicMock()
 
@@ -132,6 +141,7 @@ mock_fac.JobInfoRunner = MockJobInfoRunner
 mock_fac.App = MockApp
 mock_fac.PatchedJobInfoRunnerRequest = MockPatchedJobInfoRunnerRequest
 mock_fac.PatchedRunnerInfoRequest = MockPatchedRunnerInfoRequest
+mock_fac.RunnerManagerRunnerRegisterCreateRequest = MockRunnerManagerRunnerRegisterCreateRequest
 
 # Store a reference to the mock for easy access in tests
 fyn_api_client_mock = mock_fac
@@ -151,6 +161,10 @@ mock_models.type_enum.TypeEnum = MockTypeEnum
 mock_models.patched_job_info_runner_request = MagicMock()
 mock_models.patched_job_info_runner_request.PatchedJobInfoRunnerRequest = \
     MockPatchedJobInfoRunnerRequest
+mock_models.runner_manager_runner_register_create_request = MagicMock()
+_register_request_module = mock_models.runner_manager_runner_register_create_request
+_register_request_module.RunnerManagerRunnerRegisterCreateRequest = \
+    MockRunnerManagerRunnerRegisterCreateRequest
 
 mock_fac.models = mock_models
 
@@ -164,6 +178,8 @@ sys.modules['fyn_api_client.models.app'] = mock_models.app
 sys.modules['fyn_api_client.models.type_enum'] = mock_models.type_enum
 sys.modules['fyn_api_client.models.patched_job_info_runner_request'] = \
     mock_models.patched_job_info_runner_request
+sys.modules['fyn_api_client.models.runner_manager_runner_register_create_request'] = \
+    mock_models.runner_manager_runner_register_create_request
 
 
 # Make the enums and classes available for import
@@ -175,3 +191,4 @@ JobInfoRunner = MockJobInfoRunner
 App = MockApp
 PatchedJobInfoRunnerRequest = MockPatchedJobInfoRunnerRequest
 PatchedRunnerInfoRequest = MockPatchedRunnerInfoRequest
+RunnerManagerRunnerRegisterCreateRequest = MockRunnerManagerRunnerRegisterCreateRequest

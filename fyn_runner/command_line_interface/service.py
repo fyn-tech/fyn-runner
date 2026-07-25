@@ -12,17 +12,20 @@
 #  see <https://www.gnu.org/licenses/>.
 
 
-import os
-import psutil
 import subprocess
 
+import psutil
+
+
 def add_subparser_args(sub_parser):
+    """Register the `service` subcommand's arguments."""
     sub_parser.add_argument('action',
-        choices=['start', 'stop', 'status'],
-        help="Service action to perform")
-    
-    
+                            choices=['start', 'stop', 'status'],
+                            help="Service action to perform")
+
+
 def service(args, unknown_args):
+    """Dispatch the `service` subcommand to start/stop/status."""
     match args.action:
         case 'start':
             start(args, unknown_args)
@@ -39,37 +42,39 @@ def service(args, unknown_args):
 
 
 def start(args, unknown_args):
+    """Launch the runner daemon as a detached background process, if not already running."""
 
-    
     print(args)
     proc = find_runner_process()
     if not proc:
         try:
+            # pylint: disable-next=consider-using-with
             subprocess.Popen(
-                ['fyn-runner', 'run'] + (unknown_args or ()),
+                ['fyn-runner', 'run'] + (unknown_args or []),
                 stdout=subprocess.DEVNULL,
                 stderr=subprocess.DEVNULL,
                 start_new_session=True  # Detach from parent
             )
-            print(f"Daemon service started.")
+            print("Daemon service started.")
         except Exception as e:
             print(f"Failed to start Daemon service: {e}")
     else:
         print("Daemon service is already running")
-        
+
 
 def stop():
+    """Terminate the runner daemon, if running."""
     proc = find_runner_process()
     if proc:
-        proc.terminate() 
-        proc.wait(timeout=5) 
+        proc.terminate()
+        proc.wait(timeout=5)
     else:
         print("Daemon service is not running")
 
 
 def status():
     """Show daemon status."""
-    proc = find_runner_process()    
+    proc = find_runner_process()
     if proc:
         print(f"Daemon is running (PID: {proc.pid})")
         print(f"  Uptime: {proc.create_time()}")
